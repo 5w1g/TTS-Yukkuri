@@ -11,6 +11,10 @@ set -euo pipefail
 # The script is idempotent — it is safe to run multiple times.
 # ============================================================================
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# The script is idempotent — it is safe to run multiple times.
+# ============================================================================
+
 # ── Colours ─────────────────────────────────────────────────────────────────
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -161,7 +165,7 @@ step_project_config() {
 
     local config_dir="$HOME/.config/yukkuri"
     local config_file="$config_dir/config.json"
-    local default_config="/home/swig/TTS/config.json"
+    local default_config="$SCRIPT_DIR/config.json"
 
     mkdir -p "$config_dir"
 
@@ -183,7 +187,7 @@ step_project_config() {
 step_make_executable() {
     header "Step 6 / 6 — Making scripts executable"
 
-    local script="/home/swig/TTS/yukkuri.py"
+    local script="$SCRIPT_DIR/yukkuri.py"
 
     if [[ -f "$script" ]]; then
         chmod +x "$script"
@@ -205,7 +209,7 @@ print_summary() {
     echo -e "    ./run"
     echo ""
     echo -e "  ${BOLD}Run the TTS application:${NC}"
-    echo -e "    python3 /home/swig/TTS/yukkuri.py"
+    echo -e "    python3 $SCRIPT_DIR/yukkuri.py"
     echo ""
     echo -e "  ${BOLD}Select the virtual microphone in Discord:${NC}"
     echo -e "    Open Discord → User Settings → Voice & Video →"
