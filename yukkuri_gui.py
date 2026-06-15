@@ -36,6 +36,17 @@ except ImportError:
     POLLY_QUICK = {}
     PollyEngine = None
 
+# AquesTalk10 (authentic Yukkuri voice) is optional
+try:
+    from tts_aquestalk import AquesTalkEngine, POPULAR_VOICES as AQUESTALK_QUICK
+    from tts_aquestalk import AquesTalkError
+    HAS_AQUESTALK = True
+except ImportError:
+    HAS_AQUESTALK = False
+    AQUESTALK_QUICK = {}
+    AquesTalkEngine = None
+    class AquesTalkError(Exception): pass  # dummy — never raised when engine unavailable
+
 # ── Colours & Theme ──────────────────────────────────────────────────────────
 
 BG = "#1e1e2e"
@@ -102,6 +113,13 @@ class YukkuriApp:
             except Exception:
                 pass
 
+        self.aq_engine = None
+        if HAS_AQUESTALK:
+            try:
+                self.aq_engine = AquesTalkEngine()
+            except Exception:
+                pass
+
         self.router = AudioRouter(sink_name=audio["sink_name"])
 
         # Engine mode: "voicevox", "edge", or "polly"
@@ -109,6 +127,8 @@ class YukkuriApp:
         if self.engine_type == "edge" and not self.edge_engine:
             self.engine_type = "voicevox"
         if self.engine_type == "polly" and not self.polly_engine:
+            self.engine_type = "voicevox"
+        if self.engine_type == "aquestalk" and not self.aq_engine:
             self.engine_type = "voicevox"
 
         # Current voice settings
@@ -119,6 +139,9 @@ class YukkuriApp:
             self.speaker_id.set(saved_voice)
         elif self.engine_type == "polly":
             saved_voice = app_cfg.get("voice", "Brian")
+            self.speaker_id.set(saved_voice)
+        elif self.engine_type == "aquestalk":
+            saved_voice = app_cfg.get("voice", "f1")
             self.speaker_id.set(saved_voice)
 
         self.speed = tk.DoubleVar(value=app_cfg.get("speed_scale", 1.0))
@@ -135,6 +158,7 @@ class YukkuriApp:
             "voicevox": str(vv["speaker"]),
             "edge": app_cfg.get("voice", DEFAULT_VOICE),
             "polly": app_cfg.get("voice", "Brian"),
+            "aquestalk": self.cfg.get("aquestalk", {}).get("voice", "f1"),
         }
 
         # Playback lock
@@ -222,6 +246,22 @@ class YukkuriApp:
             reason = "not installed" if not HAS_POLLY else "init failed"
             self.btn_polly.config(
                 state="disabled", text=f"Polly ({reason})",
+                bg=SURFACE, fg=SURFACE_RAISED,
+            )
+
+        self.btn_aq = tk.Button(
+            engine_row, text="AquesTalk10", font=FONT_SMALL,
+            bg=ACCENT if self.engine_type == "aquestalk" else SURFACE_RAISED,
+            fg=BG if self.engine_type == "aquestalk" else FG,
+            activebackground=ACCENT, activeforeground=BG,
+            relief="flat", padx=12, pady=3, cursor="hand2",
+            command=lambda: self._switch_engine("aquestalk"),
+        )
+        self.btn_aq.pack(side="left", padx=(4, 0))
+        if not HAS_AQUESTALK or self.aq_engine is None or not self.aq_engine.is_available():
+            reason = "not installed" if not HAS_AQUESTALK else "init failed"
+            self.btn_aq.config(
+                state="disabled", text=f"AquesTalk10 ({reason})",
                 bg=SURFACE, fg=SURFACE_RAISED,
             )
 
@@ -379,11 +419,18 @@ class YukkuriApp:
                 "aws configure",
             )
             return
+        if engine_type == "aquestalk" and (not self.aq_engine or not self.aq_engine.is_available()):
+            messagebox.showwarning(
+                "AquesTalk10 not available",
+                "Install libAquesTalk10.so first:\n"
+                "See tts_aquestalk.py for setup instructions",
+            )
+            return
 
         self.engine_type = engine_type
 
         # Reset all buttons to inactive (skip disabled buttons)
-        for btn in [self.btn_vv, self.btn_edge, self.btn_polly]:
+        for btn in [self.btn_vv, self.btn_edge, self.btn_polly, self.btn_aq]:
             if btn.cget("state") != "disabled":
                 btn.config(bg=SURFACE_RAISED, fg=FG)
 
@@ -398,6 +445,9 @@ class YukkuriApp:
         elif engine_type == "polly":
             self.btn_polly.config(bg=ACCENT, fg=BG)
             self.speaker_id.set(self._voice_memory.get("polly", "Brian"))
+        elif engine_type == "aquestalk":
+            self.btn_aq.config(bg=ACCENT, fg=BG)
+            self.speaker_id.set(self._voice_memory.get("aquestalk", "f1"))
 
         self._refresh_voices()
         self._update_footer()
@@ -409,6 +459,8 @@ class YukkuriApp:
             self.footer_label.config(text="Edge TTS (Brian, Guy…) → Virtual Mic → Discord")
         elif self.engine_type == "polly":
             self.footer_label.config(text="Amazon Polly (real Ivona Brian) → Virtual Mic → Discord")
+        elif self.engine_type == "aquestalk":
+            self.footer_label.config(text="AquesTalk10 (Nico Nico Douga Yukkuri) → Virtual Mic → Discord")
         else:
             v = "?"
             try:
@@ -438,6 +490,21 @@ class YukkuriApp:
             self.voice_combo.config(values=["Loading voices..."])
             self.voice_combo.set("Loading voices...")
             self._load_polly_voices_async()
+        elif self.engine_type == "aquestalk":
+            self.voice_list_label.config(text="Voice")
+            aq_names = ["f1 (Classic Yukkuri)", "f2 (Marisa-type)",
+                        "f3 (Soft/high)", "m1 (Male 1)", "m2 (Male 2)",
+                        "r1 (Robot 1)", "r2 (Robot 2)"]
+            self.voice_combo.config(values=aq_names)
+            # Select the currently remembered voice
+            current = self.speaker_id.get()
+            for name in aq_names:
+                if name.startswith(current):
+                    self.voice_combo.set(name)
+                    break
+            else:
+                self.voice_combo.set(aq_names[0])
+                self.speaker_id.set("f1")
 
     def _load_edge_voices_async(self):
         """Fetch Edge TTS voice list in a background thread."""
@@ -562,8 +629,13 @@ class YukkuriApp:
     def _on_voice_changed(self, event=None):
         """Handle voice dropdown selection."""
         selection = self.voice_combo.get()
-        if self.engine_type in ("edge", "polly"):
-            if selection in self.edge_voice_map:
+        if self.engine_type in ("edge", "polly", "aquestalk"):
+            if self.engine_type == "aquestalk":
+                # AquesTalk combo values: "f1 (Classic Yukkuri)" → voice_id = "f1"
+                voice_id = selection.split()[0] if selection else "f1"
+                self.speaker_id.set(voice_id)
+                self._voice_memory["aquestalk"] = voice_id
+            elif selection in self.edge_voice_map:
                 voice_id = self.edge_voice_map[selection]
                 self.speaker_id.set(voice_id)
                 self._voice_memory[self.engine_type] = voice_id
@@ -611,6 +683,7 @@ class YukkuriApp:
         vv_engine = self.engine
         edge_eng = self.edge_engine
         polly_eng = self.polly_engine
+        aq_eng = self.aq_engine
 
         def _worker():
             try:
@@ -645,6 +718,11 @@ class YukkuriApp:
                     audio = polly_eng.synthesize(
                         text, voice=voice, **kwargs,
                     )
+                elif engine_type == "aquestalk":
+                    audio = aq_eng.synthesize(
+                        text, voice=voice, speed=speed,
+                        pitch=pitch, intonation=intonation,
+                    )
                 else:
                     sid = int(voice) if voice.isdigit() else 1
                     audio = vv_engine.synthesize(
@@ -664,6 +742,8 @@ class YukkuriApp:
             except SynthesisError as e:
                 self.root.after(0, lambda: self._on_speak_error(str(e)))
             except AudioRouterError as e:
+                self.root.after(0, lambda: self._on_speak_error(str(e)))
+            except AquesTalkError as e:
                 self.root.after(0, lambda: self._on_speak_error(str(e)))
             except Exception as e:
                 self.root.after(0, lambda: self._on_speak_error(
@@ -728,6 +808,13 @@ class YukkuriApp:
                 self.engine_footer.config(text="☁ Online (real Ivona Brian)")
             else:
                 self.engine_footer.config(text="Not installed")
+        elif self.engine_type == "aquestalk":
+            engine_ok = self.aq_engine is not None
+            if engine_ok:
+                self.root.title("Yukkuri TTS — AquesTalk10")
+                self.engine_footer.config(text="● Loaded (authentic Yukkuri)")
+            else:
+                self.engine_footer.config(text="Not installed")
         else:
             if self.engine.is_running():
                 engine_ok = True
@@ -758,13 +845,9 @@ class YukkuriApp:
                 text="Virtual mic missing — restart PipeWire", fg=YELLOW,
             )
             self._draw_dot(YELLOW)
-        else:
-            self.status_label.config(
-                text=f"{'Polly' if self.engine_type == 'polly' else 'Edge TTS'} "
-                     f"not available — check credentials or install",
-                fg=RED,
-            )
-            self._draw_dot(RED)
+        elif not engine_ok:
+            # engine error already shown above for each engine type — don't overwrite
+            pass
 
     # ── History Persistence ───────────────────────────────────────────────
 

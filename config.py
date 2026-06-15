@@ -12,6 +12,10 @@ DEFAULT_CONFIG = {
         "speaker": 1,
         "timeout_seconds": 30,
     },
+    "aquestalk": {
+        "lib_path": "",
+        "voice": "f1",
+    },
     "audio": {
         "sink_name": "yukkuri_sink",
         "sample_rate": 48000,

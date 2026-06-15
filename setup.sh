@@ -109,9 +109,56 @@ step_voicevox() {
     fi
 }
 
-# ── Step 3: PipeWire virtual sink config ───────────────────────────────────
+# ── Step 3: AquesTalk10 engine (authentic Yukkuri voice) ───────────────────
+step_aquestalk() {
+    header "Step 3 / 7 — AquesTalk10 engine (Yukkuri voice)"
+
+    local search_paths=(
+        "/usr/local/lib/libAquesTalk10.so"
+        "$HOME/aquestalk/libAquesTalk10.so"
+        "/usr/lib/libAquesTalk10.so"
+    )
+
+    local found=""
+    for p in "${search_paths[@]}"; do
+        if [[ -f "$p" ]]; then
+            found="$p"
+            break
+        fi
+    done
+
+    # Also check AQUESTALK_LIB env var
+    if [[ -z "$found" ]] && [[ -n "${AQUESTALK_LIB:-}" ]] && [[ -f "${AQUESTALK_LIB}" ]]; then
+        found="${AQUESTALK_LIB}"
+    fi
+
+    if [[ -n "$found" ]]; then
+        ok "AquesTalk10 library found at ${found}"
+        return
+    fi
+
+    warn "AquesTalk10 library (libAquesTalk10.so) not found."
+    echo ""
+    echo -e "  ${BOLD}The AquesTalk10 engine produces the authentic Yukkuri voice${NC}"
+    echo -e "  ${BOLD}(ゆっくり) made famous by Nico Nico Douga and YouTube.${NC}"
+    echo ""
+    echo "  To install it:"
+    echo "    1. Download the free evaluation SDK from:"
+    echo "       https://www.a-quest.com/products/aquestalk10.html"
+    echo "    2. Extract the archive and copy libAquesTalk10.so to:"
+    echo "       ~/aquestalk/libAquesTalk10.so  (or /usr/local/lib/)"
+    echo "    3. Re-run this script, or set AQUESTALK_LIB env var."
+    echo ""
+    echo "  Note: The evaluation version has a minor limitation"
+    echo "  (na/ma-row kana → 'nu'). A dev license removes this."
+    echo "  Without AquesTalk10 you can still use VOICEVOX, Edge TTS,"
+    echo "  and Amazon Polly."
+    echo ""
+}
+
+# ── Step 4: PipeWire virtual sink config ───────────────────────────────────
 step_pipewire_config() {
-    header "Step 3 / 6 — PipeWire virtual audio sink"
+    header "Step 4 / 7 — PipeWire virtual audio sink"
 
     local conf_dir="$HOME/.config/pipewire/pipewire.conf.d"
     local conf_file="$conf_dir/99-yukkuri.conf"
@@ -143,7 +190,7 @@ PIPEWIRE_CONF
 
 # ── Step 4: Restart PipeWire ───────────────────────────────────────────────
 step_restart_pipewire() {
-    header "Step 4 / 6 — Restarting PipeWire"
+    header "Step 5 / 7 — Restarting PipeWire"
 
     if command_exists systemctl; then
         info "Restarting pipewire and pipewire-pulse user services..."
@@ -161,7 +208,7 @@ step_restart_pipewire() {
 
 # ── Step 5: Project config directory ───────────────────────────────────────
 step_project_config() {
-    header "Step 5 / 6 — Project configuration"
+    header "Step 6 / 7 — Project configuration"
 
     local config_dir="$HOME/.config/yukkuri"
     local config_file="$config_dir/config.json"
@@ -185,7 +232,7 @@ step_project_config() {
 
 # ── Step 6: Make scripts executable ────────────────────────────────────────
 step_make_executable() {
-    header "Step 6 / 6 — Making scripts executable"
+    header "Step 7 / 7 — Making scripts executable"
 
     local script="$SCRIPT_DIR/yukkuri.py"
 
@@ -207,6 +254,11 @@ print_summary() {
     echo -e "  ${BOLD}Start the VOICEVOX engine:${NC}"
     echo -e "    cd ~/voicevox/voicevox_engine-linux-cpu-x64/"
     echo -e "    ./run"
+    echo ""
+    echo -e "  ${BOLD}Or use a cloud engine (no local server needed):${NC}"
+    echo -e "    • AquesTalk10 — authentic Yukkuri voice (Nico Nico Douga)"
+    echo -e "    • Edge TTS — free Microsoft voices (Brian, Guy, etc.)"
+    echo -e "    • Amazon Polly — real Ivona Brian (AWS credentials required)"
     echo ""
     echo -e "  ${BOLD}Run the TTS application:${NC}"
     echo -e "    python3 $SCRIPT_DIR/yukkuri.py"
@@ -230,7 +282,7 @@ main() {
     echo -e "${BOLD}============================${NC}"
     echo ""
     echo "This script will prepare your system to run the Yukkuri TTS"
-    echo "application, which uses VOICEVOX and PipeWire to pipe Japanese"
+    echo "application, which uses VOICEVOX, AquesTalk10, Edge TTS, Amazon Polly,"
     echo "text-to-speech into Discord as a virtual microphone."
     echo ""
 
@@ -245,6 +297,7 @@ main() {
 
     step_system_deps
     step_voicevox
+    step_aquestalk
     step_pipewire_config
     step_restart_pipewire
     step_project_config

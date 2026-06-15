@@ -42,6 +42,17 @@ except ImportError:
     PollyEngine = None
     POLLY_POPULAR = {}
 
+# AquesTalk10 (authentic Yukkuri voice) is optional
+try:
+    from tts_aquestalk import AquesTalkEngine, POPULAR_VOICES as AQUESTALK_POPULAR
+    from tts_aquestalk import AquesTalkError
+    HAS_AQUESTALK = True
+except ImportError:
+    HAS_AQUESTALK = False
+    AquesTalkEngine = None
+    AQUESTALK_POPULAR = {}
+    class AquesTalkError(Exception): pass  # dummy — never raised
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -101,6 +112,11 @@ def _speak(text, engine, engine_type, router, speaker, speed, pitch, intonation)
                                         pitch=pct)
             else:
                 wav = engine.synthesize(text, voice=speaker, rate=rate)
+        elif engine_type == "aquestalk":
+            wav = engine.synthesize(
+                text, voice=speaker, speed=speed,
+                pitch=pitch, intonation=intonation,
+            )
         else:
             wav = engine.synthesize(
                 text, speaker=speaker,
@@ -117,6 +133,8 @@ def _speak(text, engine, engine_type, router, speaker, speed, pitch, intonation)
         print(f"  Playback error: {exc}", file=sys.stderr)
     except VoicevoxError as exc:
         print(f"  VOICEVOX error: {exc}", file=sys.stderr)
+    except AquesTalkError as exc:
+        print(f"  AquesTalk error: {exc}", file=sys.stderr)
     except Exception as exc:
         print(f"  Error: {exc}", file=sys.stderr)
     return False
@@ -134,6 +152,9 @@ def _print_header(engine, engine_type, speaker_id, speed, pitch, intonation):
         engine_name = "Edge TTS"
     elif engine_type == "polly":
         engine_name = "Amazon Polly"
+    elif engine_type == "aquestalk":
+        engine_name = "AquesTalk10"
+        label = f"Yukkuri ({speaker_id})"
     else:
         try:
             version = engine.get_version()
@@ -157,13 +178,16 @@ def _print_header(engine, engine_type, speaker_id, speed, pitch, intonation):
 
 def _show_help(engine_type="voicevox"):
     print("  Commands:")
-    print("    /engine voicevox|edge|polly   Switch TTS engine")
+    print("    /engine voicevox|edge|polly|aquestalk   Switch TTS engine")
     if engine_type == "edge" and HAS_EDGE:
         print("    /voice NAME             Set voice (e.g. /voice brian)")
         print("    /voices                 List Edge TTS voices")
     elif engine_type == "polly" and HAS_POLLY:
         print("    /voice NAME             Set voice (e.g. /voice brian)")
         print("    /voices                 List Amazon Polly voices")
+    elif engine_type == "aquestalk" and HAS_AQUESTALK:
+        print("    /voice NAME             Set voice (f1, f2, f3, m1, m2, r1, r2)")
+        print("    /voices                 List AquesTalk10 voice presets")
     else:
         print("    /speaker N              Change speaker ID")
         print("    /speakers               List all available speakers")
@@ -186,6 +210,10 @@ def _show_status(engine, engine_type, router, speaker_id, speed, pitch, intonati
     elif engine_type == "polly":
         running = "POLLY ONLINE" if (HAS_POLLY and engine is not None) else "NOT AVAILABLE"
         print(f"  Engine:     Amazon Polly")
+    elif engine_type == "aquestalk":
+        running = "AQUESTALK ONLINE" if (HAS_AQUESTALK and engine is not None) else "NOT AVAILABLE"
+        print(f"  Engine:     AquesTalk10 (Yukkuri)")
+        label = f"Yukkuri ({speaker_id})"
     else:
         try:
             version = engine.get_version()
@@ -222,7 +250,7 @@ def _show_speakers(engine):
             print(f"  {name}")
 
 
-def repl(engine, edge_engine, polly_engine, engine_type, router, speaker_id,
+def repl(engine, edge_engine, polly_engine, aq_engine, engine_type, router, speaker_id,
          speed, pitch, intonation, history_file="~/.yukkuri_history"):
     """Interactive read-eval-speak loop."""
 
@@ -242,6 +270,8 @@ def repl(engine, edge_engine, polly_engine, engine_type, router, speaker_id,
             return edge_engine
         elif engine_type == "polly":
             return polly_engine
+        elif engine_type == "aquestalk":
+            return aq_engine
         return engine
 
     while True:
@@ -267,7 +297,7 @@ def repl(engine, edge_engine, polly_engine, engine_type, router, speaker_id,
                 _show_help(engine_type)
 
             elif cmd == "/status":
-                _show_status(engine, engine_type, router, speaker_id,
+                _show_status(_active(), engine_type, router, speaker_id,
                              speed, pitch, intonation)
 
             elif cmd == "/engine":
@@ -294,16 +324,32 @@ def repl(engine, edge_engine, polly_engine, engine_type, router, speaker_id,
                     engine_type = "polly"
                     speaker_id = "Brian"
                     print("  Switched to Amazon Polly (Brian — real Ivona)")
+                elif arg == "aquestalk" and HAS_AQUESTALK:
+                    if aq_engine is None:
+                        try:
+                            aq_engine = AquesTalkEngine()
+                        except Exception as exc:
+                            print(f"  Failed to create AquesTalk10 engine: {exc}")
+                            print("  Ensure libAquesTalk10.so is available.")
+                            continue
+                    engine_type = "aquestalk"
+                    speaker_id = "f1"
+                    print("  Switched to AquesTalk10 (authentic Yukkuri voice)")
                 elif arg == "voicevox":
                     engine_type = "voicevox"
                     speaker_id = 1
                     print("  Switched to VOICEVOX (Zundamon)")
                 else:
                     print(f"  Unknown or unavailable engine: {arg}. "
-                          f"Use 'voicevox', 'edge', or 'polly'")
+                          f"Use 'voicevox', 'edge', 'polly', or 'aquestalk'")
 
-            elif cmd == "/voice" and engine_type in ("edge", "polly"):
-                voices_map = EDGE_POPULAR if engine_type == "edge" else POLLY_POPULAR
+            elif cmd == "/voice" and engine_type in ("edge", "polly", "aquestalk"):
+                if engine_type == "edge":
+                    voices_map = EDGE_POPULAR
+                elif engine_type == "polly":
+                    voices_map = POLLY_POPULAR
+                else:
+                    voices_map = AQUESTALK_POPULAR
                 if not arg:
                     print(f"  Current voice: {speaker_id}")
                 elif arg in voices_map:
@@ -337,6 +383,13 @@ def repl(engine, edge_engine, polly_engine, engine_type, router, speaker_id,
                                   f"{v['LanguageCode']:6s} [{engines}]")
                     except Exception as e:
                         print(f"  Could not list voices: {e}")
+                elif engine_type == "aquestalk" and HAS_AQUESTALK and aq_engine:
+                    print("  AquesTalk10 voice presets:")
+                    try:
+                        for v in aq_engine.list_voices():
+                            print(f"    {v['id']:6s}  {v['name']}")
+                    except Exception as e:
+                        print(f"    {', '.join(AQUESTALK_POPULAR.keys())}")
                 else:
                     print("  No voice list available for current engine.")
 
@@ -465,6 +518,7 @@ def main():
     engine = None
     edge_engine = None
     polly_engine = None
+    aq_engine = None
 
     if engine_type == "voicevox":
         engine = VoicevoxEngine(
@@ -487,6 +541,9 @@ def main():
     elif engine_type == "polly" and HAS_POLLY:
         polly_engine = PollyEngine()
         speaker_id = "Brian"
+    elif engine_type == "aquestalk" and HAS_AQUESTALK:
+        aq_engine = AquesTalkEngine()
+        speaker_id = "f1"
     else:
         # Default — try VOICEVOX first, then Polly, then Edge
         engine = VoicevoxEngine(
@@ -501,7 +558,25 @@ def main():
                 engine_type = "polly"
                 speaker_id = "Brian"
             except Exception:
-                if HAS_EDGE:
+                if HAS_AQUESTALK:
+                    try:
+                        aq_engine = AquesTalkEngine()
+                        engine_type = "aquestalk"
+                        speaker_id = "f1"
+                    except Exception:
+                        if HAS_EDGE:
+                            try:
+                                edge_engine = EdgeTTSEngine()
+                                engine_type = "edge"
+                                speaker_id = "en-US-BrianNeural"
+                            except Exception as exc:
+                                print(f"Error: No TTS engine available: {exc}",
+                                      file=sys.stderr)
+                                sys.exit(1)
+                        else:
+                            print("Error: No TTS engine available.", file=sys.stderr)
+                            sys.exit(1)
+                elif HAS_EDGE:
                     try:
                         edge_engine = EdgeTTSEngine()
                         engine_type = "edge"
@@ -512,6 +587,24 @@ def main():
                         sys.exit(1)
                 else:
                     print("Error: No TTS engine available.", file=sys.stderr)
+                    sys.exit(1)
+        elif HAS_AQUESTALK:
+            try:
+                aq_engine = AquesTalkEngine()
+                engine_type = "aquestalk"
+                speaker_id = "f1"
+            except Exception as exc:
+                if HAS_EDGE:
+                    try:
+                        edge_engine = EdgeTTSEngine()
+                        engine_type = "edge"
+                        speaker_id = "en-US-BrianNeural"
+                    except Exception as exc2:
+                        print(f"Error: No TTS engine available: {exc}, {exc2}",
+                              file=sys.stderr)
+                        sys.exit(1)
+                else:
+                    print(f"Error: No TTS engine available: {exc}", file=sys.stderr)
                     sys.exit(1)
         elif HAS_EDGE:
             try:
@@ -531,6 +624,8 @@ def main():
             return edge_engine
         elif engine_type == "polly":
             return polly_engine
+        elif engine_type == "aquestalk":
+            return aq_engine
         return engine
 
     # Mode dispatch -------------------------------------------------------
@@ -547,7 +642,7 @@ def main():
                    speed, pitch, intonation)
 
     else:
-        repl(engine, edge_engine, polly_engine, engine_type, router,
+        repl(engine, edge_engine, polly_engine, aq_engine, engine_type, router,
              speaker_id, speed, pitch, intonation,
              history_file=app_cfg.get("history_file", "~/.yukkuri_history"))
 
