@@ -27,6 +27,15 @@ except ImportError:
     EDGE_QUICK = {}
     DEFAULT_VOICE = "en-US-BrianNeural"
 
+# Amazon Polly (real Ivona Brian) is optional
+try:
+    from tts_polly import PollyEngine, POPULAR_VOICES as POLLY_QUICK
+    HAS_POLLY = True
+except ImportError:
+    HAS_POLLY = False
+    POLLY_QUICK = {}
+    PollyEngine = None
+
 # ── Colours & Theme ──────────────────────────────────────────────────────────
 
 BG = "#1e1e2e"
@@ -86,18 +95,31 @@ class YukkuriApp:
             except Exception:
                 pass
 
+        self.polly_engine = None
+        if HAS_POLLY:
+            try:
+                self.polly_engine = PollyEngine()
+            except Exception:
+                pass
+
         self.router = AudioRouter(sink_name=audio["sink_name"])
 
-        # Engine mode: "voicevox" or "edge"
+        # Engine mode: "voicevox", "edge", or "polly"
         self.engine_type = app_cfg.get("engine", "voicevox")
         if self.engine_type == "edge" and not self.edge_engine:
+            self.engine_type = "voicevox"
+        if self.engine_type == "polly" and not self.polly_engine:
             self.engine_type = "voicevox"
 
         # Current voice settings
         self.speaker_id = tk.StringVar(value=str(vv["speaker"]))
-        # Ensure edge default if starting in edge mode
-        if self.engine_type == "edge" and self.speaker_id.get().isdigit():
-            self.speaker_id.set(DEFAULT_VOICE)
+        # Ensure correct default if starting in non-VOICEVOX mode
+        if self.engine_type == "edge":
+            saved_voice = app_cfg.get("voice", DEFAULT_VOICE)
+            self.speaker_id.set(saved_voice)
+        elif self.engine_type == "polly":
+            saved_voice = app_cfg.get("voice", "Brian")
+            self.speaker_id.set(saved_voice)
 
         self.speed = tk.DoubleVar(value=app_cfg.get("speed_scale", 1.0))
         self.pitch = tk.DoubleVar(value=app_cfg.get("pitch_scale", 1.0))
@@ -108,9 +130,19 @@ class YukkuriApp:
         self.speaker_map = {}      # "Name — Style" -> style_id  (VOICEVOX)
         self.edge_voice_map = {}   # "Brian (en-US-BrianNeural)" -> short_name
 
+        # Remember voice selection per engine type
+        self._voice_memory = {
+            "voicevox": str(vv["speaker"]),
+            "edge": app_cfg.get("voice", DEFAULT_VOICE),
+            "polly": app_cfg.get("voice", "Brian"),
+        }
+
         # Playback lock
         self._speaking = False
         self._pending = False
+
+        # Background voice-loading thread handle
+        self._voice_loader = None
 
         # Build UI
         self._build_ui()
@@ -169,10 +201,27 @@ class YukkuriApp:
             relief="flat", padx=12, pady=3, cursor="hand2",
             command=lambda: self._switch_engine("edge"),
         )
-        self.btn_edge.pack(side="left")
-        if not HAS_EDGE:
+        self.btn_edge.pack(side="left", padx=(0, 4))
+        if not HAS_EDGE or self.edge_engine is None:
+            reason = "not installed" if not HAS_EDGE else "init failed"
             self.btn_edge.config(
-                state="disabled", text="Edge TTS (not installed)",
+                state="disabled", text=f"Edge TTS ({reason})",
+                bg=SURFACE, fg=SURFACE_RAISED,
+            )
+
+        self.btn_polly = tk.Button(
+            engine_row, text="Polly", font=FONT_SMALL,
+            bg=ACCENT if self.engine_type == "polly" else SURFACE_RAISED,
+            fg=BG if self.engine_type == "polly" else FG,
+            activebackground=ACCENT, activeforeground=BG,
+            relief="flat", padx=12, pady=3, cursor="hand2",
+            command=lambda: self._switch_engine("polly"),
+        )
+        self.btn_polly.pack(side="left")
+        if not HAS_POLLY or self.polly_engine is None:
+            reason = "not installed" if not HAS_POLLY else "init failed"
+            self.btn_polly.config(
+                state="disabled", text=f"Polly ({reason})",
                 bg=SURFACE, fg=SURFACE_RAISED,
             )
 
@@ -312,7 +361,7 @@ class YukkuriApp:
     # ── Engine Switching ──────────────────────────────────────────────────
 
     def _switch_engine(self, engine_type):
-        """Switch between VOICEVOX and Edge TTS."""
+        """Switch between VOICEVOX, Edge TTS, and Amazon Polly."""
         if engine_type == self.engine_type:
             return
         if engine_type == "edge" and not self.edge_engine:
@@ -322,18 +371,33 @@ class YukkuriApp:
                 "pip install --break-system-packages edge-tts",
             )
             return
+        if engine_type == "polly" and not self.polly_engine:
+            messagebox.showwarning(
+                "Amazon Polly not available",
+                "Install boto3 and configure AWS credentials:\n"
+                "pip install --break-system-packages boto3\n"
+                "aws configure",
+            )
+            return
 
         self.engine_type = engine_type
 
-        # Update button styles
+        # Reset all buttons to inactive (skip disabled buttons)
+        for btn in [self.btn_vv, self.btn_edge, self.btn_polly]:
+            if btn.cget("state") != "disabled":
+                btn.config(bg=SURFACE_RAISED, fg=FG)
+
+        # Highlight active button and restore saved voice for this engine
         if engine_type == "voicevox":
             self.btn_vv.config(bg=ACCENT, fg=BG)
-            self.btn_edge.config(bg=SURFACE_RAISED, fg=FG)
-            self.speaker_id.set(str(self.cfg["voicevox"]["speaker"]))
-        else:
-            self.btn_vv.config(bg=SURFACE_RAISED, fg=FG)
+            self.speaker_id.set(self._voice_memory.get("voicevox",
+                                str(self.cfg["voicevox"]["speaker"])))
+        elif engine_type == "edge":
             self.btn_edge.config(bg=ACCENT, fg=BG)
-            self.speaker_id.set(DEFAULT_VOICE)
+            self.speaker_id.set(self._voice_memory.get("edge", DEFAULT_VOICE))
+        elif engine_type == "polly":
+            self.btn_polly.config(bg=ACCENT, fg=BG)
+            self.speaker_id.set(self._voice_memory.get("polly", "Brian"))
 
         self._refresh_voices()
         self._update_footer()
@@ -343,6 +407,8 @@ class YukkuriApp:
         """Update footer text based on current engine."""
         if self.engine_type == "edge":
             self.footer_label.config(text="Edge TTS (Brian, Guy…) → Virtual Mic → Discord")
+        elif self.engine_type == "polly":
+            self.footer_label.config(text="Amazon Polly (real Ivona Brian) → Virtual Mic → Discord")
         else:
             v = "?"
             try:
@@ -354,13 +420,112 @@ class YukkuriApp:
     # ── Voice Dropdown ────────────────────────────────────────────────────
 
     def _refresh_voices(self):
-        """Populate the voice dropdown for the current engine."""
-        if self.engine_type == "edge":
-            self.voice_list_label.config(text="Voice")
-            self._populate_edge_voices()
-        else:
+        """Populate the voice dropdown for the current engine.
+
+        For polly and edge, voice lists are fetched in a background
+        thread to avoid freezing the UI on slow networks.
+        """
+        if self.engine_type == "voicevox":
             self.voice_list_label.config(text="Speaker")
             self._populate_vv_speakers()
+        elif self.engine_type == "edge":
+            self.voice_list_label.config(text="Voice")
+            self.voice_combo.config(values=["Loading voices..."])
+            self.voice_combo.set("Loading voices...")
+            self._load_edge_voices_async()
+        elif self.engine_type == "polly":
+            self.voice_list_label.config(text="Voice")
+            self.voice_combo.config(values=["Loading voices..."])
+            self.voice_combo.set("Loading voices...")
+            self._load_polly_voices_async()
+
+    def _load_edge_voices_async(self):
+        """Fetch Edge TTS voice list in a background thread."""
+        eng = self.edge_engine
+        current_voice = self.speaker_id.get()
+
+        def _worker():
+            names = []
+            voice_map = {}
+            current_name = None
+            # Quick-access popular voices
+            for friendly, short in EDGE_QUICK.items():
+                label = f"{friendly} ({short})"
+                names.append(label)
+                voice_map[label] = short
+                if short == current_voice:
+                    current_name = label
+            # Full en-US list from API
+            try:
+                if eng:
+                    voices = eng.list_voices()
+                    en_us = [v for v in voices if v['locale'] == 'en-US']
+                    for v in en_us:
+                        short = v['short_name']
+                        if short in EDGE_QUICK.values():
+                            continue
+                        g = {'Male': '♂', 'Female': '♀'}.get(v['gender'], '?')
+                        label = f"{g} {v['name'].split(' - ')[0].replace('Microsoft ','')} ({short})"
+                        names.append(label)
+                        voice_map[label] = short
+                        if short == current_voice:
+                            current_name = label
+            except Exception:
+                pass
+            self.root.after(0, lambda: self._on_voices_loaded(
+                names, voice_map, current_name
+            ))
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _load_polly_voices_async(self):
+        """Fetch Polly voice list in a background thread."""
+        eng = self.polly_engine
+        current_voice = self.speaker_id.get()
+
+        def _worker():
+            names = []
+            voice_map = {}
+            current_name = None
+            # Quick-access popular voices
+            for friendly, voice_id in POLLY_QUICK.items():
+                label = f"{friendly} ({voice_id})"
+                names.append(label)
+                voice_map[label] = voice_id
+                if voice_id == current_voice:
+                    current_name = label
+            # Full English voice list from API
+            try:
+                if eng:
+                    voices = eng.list_voices()
+                    en_voices = [v for v in voices if v["LanguageCode"].startswith("en-")]
+                    for v in sorted(en_voices, key=lambda x: x["Id"]):
+                        vid = v["Id"]
+                        if vid in POLLY_QUICK.values():
+                            continue
+                        engines_str = ", ".join(v.get("SupportedEngines", ["?"]))
+                        g = {"Male": "♂", "Female": "♀"}.get(v.get("Gender", "?"), "?")
+                        label = f"{g} {vid} ({v['LanguageCode']}) [{engines_str}]"
+                        names.append(label)
+                        voice_map[label] = vid
+                        if vid == current_voice:
+                            current_name = label
+            except Exception:
+                pass
+            self.root.after(0, lambda: self._on_voices_loaded(
+                names, voice_map, current_name
+            ))
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _on_voices_loaded(self, names, voice_map, current_name):
+        """Callback: update voice dropdown after background fetch."""
+        self.edge_voice_map = voice_map
+        self.voice_combo.config(values=names)
+        if current_name:
+            self.voice_combo.set(current_name)
+        elif names:
+            self.voice_combo.set(names[0])
 
     def _populate_vv_speakers(self):
         """Populate dropdown with VOICEVOX speakers."""
@@ -394,56 +559,22 @@ class YukkuriApp:
             self.voice_combo.config(values=["Failed to load speakers"])
             self.voice_combo.set("Failed to load speakers")
 
-    def _populate_edge_voices(self):
-        """Populate dropdown with Edge TTS quick voices."""
-        self.speaker_map.clear()
-        self.edge_voice_map.clear()
-        names = []
-        current_name = None
-        current_voice = self.speaker_id.get()
-
-        # Quick-access popular voices
-        for friendly, short in EDGE_QUICK.items():
-            label = f"{friendly} ({short})"
-            names.append(label)
-            self.edge_voice_map[label] = short
-            if short == current_voice:
-                current_name = label
-
-        # Also add full en-US list if available
-        try:
-            if self.edge_engine:
-                voices = self.edge_engine.list_voices()
-                en_us = [v for v in voices if v['locale'] == 'en-US']
-                for v in en_us:
-                    short = v['short_name']
-                    # Skip if already in quick list
-                    if short in EDGE_QUICK.values():
-                        continue
-                    g = {'Male': '♂', 'Female': '♀'}.get(v['gender'], '?')
-                    label = f"{g} {v['name'].split(' - ')[0].replace('Microsoft ','')} ({short})"
-                    names.append(label)
-                    self.edge_voice_map[label] = short
-                    if short == current_voice:
-                        current_name = label
-        except Exception:
-            pass
-
-        self.voice_combo.config(values=names)
-        if current_name:
-            self.voice_combo.set(current_name)
-        elif names:
-            self.voice_combo.set(names[0])
-
     def _on_voice_changed(self, event=None):
         """Handle voice dropdown selection."""
         selection = self.voice_combo.get()
-        if self.engine_type == "edge":
+        if self.engine_type in ("edge", "polly"):
             if selection in self.edge_voice_map:
-                self.speaker_id.set(self.edge_voice_map[selection])
+                voice_id = self.edge_voice_map[selection]
+                self.speaker_id.set(voice_id)
+                self._voice_memory[self.engine_type] = voice_id
+            elif selection != "Loading voices...":
+                self.status_label.config(
+                    text=f"Unknown voice: {selection}", fg=YELLOW)
         else:
             if selection in self.speaker_map:
-                self.speaker_id.set(str(self.speaker_map[selection]))
+                sid = str(self.speaker_map[selection])
+                self.speaker_id.set(sid)
+                self._voice_memory["voicevox"] = sid
 
     # ── Speak ─────────────────────────────────────────────────────────────
 
@@ -479,6 +610,7 @@ class YukkuriApp:
         # Capture engine references for the worker thread
         vv_engine = self.engine
         edge_eng = self.edge_engine
+        polly_eng = self.polly_engine
 
         def _worker():
             try:
@@ -488,6 +620,30 @@ class YukkuriApp:
                     pitch_hz = f"{int((pitch - 1.0) * 12):+d}Hz"
                     audio = edge_eng.synthesize(
                         text, voice=voice, rate=rate_str, pitch=pitch_hz,
+                    )
+                elif engine_type == "polly":
+                    # Convert speed → Polly rate
+                    if speed <= 0.6:
+                        polly_rate = "x-slow"
+                    elif speed <= 0.85:
+                        polly_rate = "slow"
+                    elif speed <= 1.25:
+                        polly_rate = "medium"
+                    elif speed <= 1.7:
+                        polly_rate = "fast"
+                    else:
+                        polly_rate = "x-fast"
+                    # Pass pitch if non-default, intonation maps to volume
+                    kwargs = {"rate": polly_rate}
+                    if pitch != 1.0:
+                        kwargs["pitch"] = f"{int((pitch - 1.0) * 100):+d}%"
+                    if intonation != 1.0:
+                        if intonation < 1.0:
+                            kwargs["volume"] = "soft" if intonation < 0.7 else "x-soft"
+                        else:
+                            kwargs["volume"] = "loud" if intonation > 1.3 else "x-loud"
+                    audio = polly_eng.synthesize(
+                        text, voice=voice, **kwargs,
                     )
                 else:
                     sid = int(voice) if voice.isdigit() else 1
@@ -565,6 +721,13 @@ class YukkuriApp:
                 self.engine_footer.config(text="☁ Online (no local engine needed)")
             else:
                 self.engine_footer.config(text="Not installed")
+        elif self.engine_type == "polly":
+            engine_ok = self.polly_engine is not None
+            if engine_ok:
+                self.root.title("Yukkuri TTS — Amazon Polly")
+                self.engine_footer.config(text="☁ Online (real Ivona Brian)")
+            else:
+                self.engine_footer.config(text="Not installed")
         else:
             if self.engine.is_running():
                 engine_ok = True
@@ -572,9 +735,10 @@ class YukkuriApp:
                     version = self.engine.get_version()
                     self.root.title(f"Yukkuri TTS — VOICEVOX {version}")
                 except Exception:
-                    pass
+                    self.root.title("Yukkuri TTS — VOICEVOX")
                 self.engine_footer.config(text="● Connected")
             else:
+                self.root.title("Yukkuri TTS — VOICEVOX (offline)")
                 self.status_label.config(
                     text="VOICEVOX not running — start the engine first", fg=RED,
                 )
@@ -594,6 +758,13 @@ class YukkuriApp:
                 text="Virtual mic missing — restart PipeWire", fg=YELLOW,
             )
             self._draw_dot(YELLOW)
+        else:
+            self.status_label.config(
+                text=f"{'Polly' if self.engine_type == 'polly' else 'Edge TTS'} "
+                     f"not available — check credentials or install",
+                fg=RED,
+            )
+            self._draw_dot(RED)
 
     # ── History Persistence ───────────────────────────────────────────────
 
@@ -629,6 +800,9 @@ class YukkuriApp:
         def _on_close():
             if self.engine_type == "voicevox" and self.speaker_id.get().isdigit():
                 self.cfg["voicevox"]["speaker"] = int(self.speaker_id.get())
+            # Save voice selection for polly/edge too
+            if self.engine_type != "voicevox":
+                self.cfg["app"]["voice"] = self.speaker_id.get()
             self.cfg["app"]["speed_scale"] = self.speed.get()
             self.cfg["app"]["pitch_scale"] = self.pitch.get()
             self.cfg["app"]["intonation_scale"] = self.intonation.get()

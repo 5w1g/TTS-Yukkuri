@@ -33,6 +33,15 @@ except ImportError:
     EdgeTTSEngine = None
     EDGE_POPULAR = {}
 
+# Amazon Polly (real Ivona Brian) is optional
+try:
+    from tts_polly import PollyEngine, POPULAR_VOICES as POLLY_POPULAR
+    HAS_POLLY = True
+except ImportError:
+    HAS_POLLY = False
+    PollyEngine = None
+    POLLY_POPULAR = {}
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -73,6 +82,25 @@ def _speak(text, engine, engine_type, router, speaker, speed, pitch, intonation)
                 rate=f"{int((speed - 1.0) * 100):+.0f}%",
                 pitch=f"{int((pitch - 1.0) * 12):+d}Hz",
             )
+        elif engine_type == "polly":
+            # Convert speed → Polly rate string
+            if speed <= 0.6:
+                rate = "x-slow"
+            elif speed <= 0.85:
+                rate = "slow"
+            elif speed <= 1.25:
+                rate = "medium"
+            elif speed <= 1.7:
+                rate = "fast"
+            else:
+                rate = "x-fast"
+            # Map pitch/intonation to Polly prosoidium
+            if pitch != 1.0:
+                pct = f"{int((pitch - 1.0) * 100):+d}%"
+                wav = engine.synthesize(text, voice=speaker, rate=rate,
+                                        pitch=pct)
+            else:
+                wav = engine.synthesize(text, voice=speaker, rate=rate)
         else:
             wav = engine.synthesize(
                 text, speaker=speaker,
@@ -101,9 +129,11 @@ def _speak(text, engine, engine_type, router, speaker, speed, pitch, intonation)
 def _print_header(engine, engine_type, speaker_id, speed, pitch, intonation):
     """Show a friendly banner on REPL start."""
     engine_name = "VOICEVOX"
+    label = str(speaker_id)
     if engine_type == "edge":
         engine_name = "Edge TTS"
-        label = str(speaker_id)
+    elif engine_type == "polly":
+        engine_name = "Amazon Polly"
     else:
         try:
             version = engine.get_version()
@@ -127,10 +157,13 @@ def _print_header(engine, engine_type, speaker_id, speed, pitch, intonation):
 
 def _show_help(engine_type="voicevox"):
     print("  Commands:")
-    print("    /engine voicevox|edge   Switch TTS engine")
+    print("    /engine voicevox|edge|polly   Switch TTS engine")
     if engine_type == "edge" and HAS_EDGE:
         print("    /voice NAME             Set voice (e.g. /voice brian)")
         print("    /voices                 List Edge TTS voices")
+    elif engine_type == "polly" and HAS_POLLY:
+        print("    /voice NAME             Set voice (e.g. /voice brian)")
+        print("    /voices                 List Amazon Polly voices")
     else:
         print("    /speaker N              Change speaker ID")
         print("    /speakers               List all available speakers")
@@ -146,10 +179,13 @@ def _show_help(engine_type="voicevox"):
 
 def _show_status(engine, engine_type, router, speaker_id, speed, pitch, intonation):
     """Print current state."""
+    label = str(speaker_id)
     if engine_type == "edge":
-        label = str(speaker_id)
-        running = "EDGE ONLINE" if HAS_EDGE else "NOT AVAILABLE"
+        running = "EDGE ONLINE" if (HAS_EDGE and engine is not None) else "NOT AVAILABLE"
         print(f"  Engine:     Microsoft Edge TTS")
+    elif engine_type == "polly":
+        running = "POLLY ONLINE" if (HAS_POLLY and engine is not None) else "NOT AVAILABLE"
+        print(f"  Engine:     Amazon Polly")
     else:
         try:
             version = engine.get_version()
@@ -170,7 +206,7 @@ def _show_speakers(engine):
     """Print every speaker and their style IDs."""
     try:
         speakers = engine.get_speakers()
-    except VoicevoxError as exc:
+    except Exception as exc:
         print(f"  Could not fetch speaker list: {exc}")
         return
 
@@ -186,8 +222,8 @@ def _show_speakers(engine):
             print(f"  {name}")
 
 
-def repl(engine, edge_engine, engine_type, router, speaker_id, speed, pitch,
-         intonation, history_file="~/.yukkuri_history"):
+def repl(engine, edge_engine, polly_engine, engine_type, router, speaker_id,
+         speed, pitch, intonation, history_file="~/.yukkuri_history"):
     """Interactive read-eval-speak loop."""
 
     _setup_readline(history_file)
@@ -199,6 +235,14 @@ def repl(engine, edge_engine, engine_type, router, speaker_id, speed, pitch,
         sys.exit(0)
 
     signal.signal(signal.SIGINT, _sigint_handler)
+
+    def _active():
+        """Return the active engine instance for the current type."""
+        if engine_type == "edge":
+            return edge_engine
+        elif engine_type == "polly":
+            return polly_engine
+        return engine
 
     while True:
         try:
@@ -231,39 +275,70 @@ def repl(engine, edge_engine, engine_type, router, speaker_id, speed, pitch,
                     print(f"  Current engine: {engine_type}")
                 elif arg == "edge" and HAS_EDGE:
                     if edge_engine is None:
-                        edge_engine = EdgeTTSEngine()
+                        try:
+                            edge_engine = EdgeTTSEngine()
+                        except Exception as exc:
+                            print(f"  Failed to create Edge TTS engine: {exc}")
+                            continue
                     engine_type = "edge"
                     speaker_id = "en-US-BrianNeural"
                     print("  Switched to Edge TTS (Brian)")
+                elif arg == "polly" and HAS_POLLY:
+                    if polly_engine is None:
+                        try:
+                            polly_engine = PollyEngine()
+                        except Exception as exc:
+                            print(f"  Failed to create Polly engine: {exc}")
+                            print("  Check your AWS credentials.")
+                            continue
+                    engine_type = "polly"
+                    speaker_id = "Brian"
+                    print("  Switched to Amazon Polly (Brian — real Ivona)")
                 elif arg == "voicevox":
                     engine_type = "voicevox"
                     speaker_id = 1
                     print("  Switched to VOICEVOX (Zundamon)")
                 else:
-                    print(f"  Unknown engine: {arg}. Use 'voicevox' or 'edge'")
+                    print(f"  Unknown or unavailable engine: {arg}. "
+                          f"Use 'voicevox', 'edge', or 'polly'")
 
-            elif cmd == "/voice" and engine_type == "edge" and HAS_EDGE:
+            elif cmd == "/voice" and engine_type in ("edge", "polly"):
+                voices_map = EDGE_POPULAR if engine_type == "edge" else POLLY_POPULAR
                 if not arg:
                     print(f"  Current voice: {speaker_id}")
-                elif arg in EDGE_POPULAR:
-                    speaker_id = EDGE_POPULAR[arg]
+                elif arg in voices_map:
+                    speaker_id = voices_map[arg]
                     print(f"  Voice set to: {arg} → {speaker_id}")
                 else:
-                    # Try as full short name
                     speaker_id = arg
                     print(f"  Voice set to: {speaker_id}")
 
-            elif cmd == "/voices" and HAS_EDGE and edge_engine:
-                print("  Quick voices: " + ", ".join(EDGE_POPULAR.keys()))
-                print("  Full names (use with /voice):")
-                try:
-                    voices = edge_engine.list_voices()
-                    en_us = [v for v in voices if v['locale'] == 'en-US']
-                    for v in en_us:
-                        g = {'Male': '♂', 'Female': '♀'}.get(v['gender'], '?')
-                        print(f"    {g} {v['short_name']}")
-                except Exception as e:
-                    print(f"  Could not list voices: {e}")
+            elif cmd == "/voices":
+                if engine_type == "edge" and HAS_EDGE and edge_engine:
+                    print("  Quick voices: " + ", ".join(EDGE_POPULAR.keys()))
+                    print("  Full names (use with /voice):")
+                    try:
+                        voices = edge_engine.list_voices()
+                        en_us = [v for v in voices if v['locale'] == 'en-US']
+                        for v in en_us:
+                            g = {'Male': '♂', 'Female': '♀'}.get(v['gender'], '?')
+                            print(f"    {g} {v['short_name']}")
+                    except Exception as e:
+                        print(f"  Could not list voices: {e}")
+                elif engine_type == "polly" and HAS_POLLY and polly_engine:
+                    print("  Quick voices: " + ", ".join(POLLY_POPULAR.keys()))
+                    print("  All English voices:")
+                    try:
+                        voices = polly_engine.list_voices()
+                        en_voices = [v for v in voices if v["LanguageCode"].startswith("en-")]
+                        for v in sorted(en_voices, key=lambda x: x["Id"]):
+                            engines = ", ".join(v.get("SupportedEngines", ["?"]))
+                            print(f"    {v['Id']:20s} {v['Gender']:6s} "
+                                  f"{v['LanguageCode']:6s} [{engines}]")
+                    except Exception as e:
+                        print(f"  Could not list voices: {e}")
+                else:
+                    print("  No voice list available for current engine.")
 
             elif cmd == "/speakers" and engine_type == "voicevox":
                 _show_speakers(engine)
@@ -289,7 +364,7 @@ def repl(engine, edge_engine, engine_type, router, speaker_id, speed, pitch,
                             print(f"  Speaker ID {new_id} not found. "
                                   f"Use /speakers to list available IDs.")
                             continue
-                    except VoicevoxError:
+                    except Exception:
                         pass  # Can't validate; let the engine reject if bad
                     speaker_id = new_id
                     label = _resolve_speaker_label(engine, speaker_id)
@@ -345,12 +420,12 @@ def repl(engine, edge_engine, engine_type, router, speaker_id, speed, pitch,
                           f"available commands.")
                 else:
                     # Someone typed e.g. "/usr/bin" — speak it.
-                    _speak(raw, engine, engine_type, router, speaker_id,
+                    _speak(raw, _active(), engine_type, router, speaker_id,
                            speed, pitch, intonation)
 
         # -- text to speak ---------------------------------------------
         else:
-            _speak(raw, engine, engine_type, router, speaker_id,
+            _speak(raw, _active(), engine_type, router, speaker_id,
                    speed, pitch, intonation)
 
     print("Goodbye!")
@@ -389,6 +464,7 @@ def main():
     # Instantiate engines ------------------------------------------------
     engine = None
     edge_engine = None
+    polly_engine = None
 
     if engine_type == "voicevox":
         engine = VoicevoxEngine(
@@ -408,40 +484,71 @@ def main():
     elif engine_type == "edge" and HAS_EDGE:
         edge_engine = EdgeTTSEngine()
         speaker_id = "en-US-BrianNeural"
+    elif engine_type == "polly" and HAS_POLLY:
+        polly_engine = PollyEngine()
+        speaker_id = "Brian"
     else:
-        # Default to VOICEVOX
+        # Default — try VOICEVOX first, then Polly, then Edge
         engine = VoicevoxEngine(
             host=vv_cfg["host"], port=vv_cfg["port"],
             timeout=vv_cfg.get("timeout_seconds", 30),
         )
         if engine.is_running():
             engine_type = "voicevox"
+        elif HAS_POLLY:
+            try:
+                polly_engine = PollyEngine()
+                engine_type = "polly"
+                speaker_id = "Brian"
+            except Exception:
+                if HAS_EDGE:
+                    try:
+                        edge_engine = EdgeTTSEngine()
+                        engine_type = "edge"
+                        speaker_id = "en-US-BrianNeural"
+                    except Exception as exc:
+                        print(f"Error: No TTS engine available: {exc}",
+                              file=sys.stderr)
+                        sys.exit(1)
+                else:
+                    print("Error: No TTS engine available.", file=sys.stderr)
+                    sys.exit(1)
         elif HAS_EDGE:
-            edge_engine = EdgeTTSEngine()
-            engine_type = "edge"
-            speaker_id = "en-US-BrianNeural"
+            try:
+                edge_engine = EdgeTTSEngine()
+                engine_type = "edge"
+                speaker_id = "en-US-BrianNeural"
+            except Exception as exc:
+                print(f"Error: No TTS engine available: {exc}", file=sys.stderr)
+                sys.exit(1)
         else:
             print("Error: No TTS engine available.", file=sys.stderr)
             sys.exit(1)
+
+    def _active_engine():
+        """Return the active engine instance for the current type."""
+        if engine_type == "edge":
+            return edge_engine
+        elif engine_type == "polly":
+            return polly_engine
+        return engine
 
     # Mode dispatch -------------------------------------------------------
     if len(sys.argv) > 1:
         text = " ".join(sys.argv[1:])
         if text.strip():
-            active = edge_engine if engine_type == "edge" else engine
-            _speak(text, active, engine_type, router, speaker_id,
+            _speak(text, _active_engine(), engine_type, router, speaker_id,
                    speed, pitch, intonation)
 
     elif not sys.stdin.isatty():
         text = sys.stdin.read()
         if text.strip():
-            active = edge_engine if engine_type == "edge" else engine
-            _speak(text, active, engine_type, router, speaker_id,
+            _speak(text, _active_engine(), engine_type, router, speaker_id,
                    speed, pitch, intonation)
 
     else:
-        repl(engine, edge_engine, engine_type, router, speaker_id,
-             speed, pitch, intonation,
+        repl(engine, edge_engine, polly_engine, engine_type, router,
+             speaker_id, speed, pitch, intonation,
              history_file=app_cfg.get("history_file", "~/.yukkuri_history"))
 
 

@@ -4,9 +4,11 @@ Manages the virtual audio sink and plays WAV audio into it so that
 the sink's monitor output can be captured by Discord as a microphone.
 """
 
+import json
 import os
 import subprocess
 import tempfile
+import threading
 import time
 
 
@@ -33,6 +35,7 @@ class AudioRouter:
         self.sample_rate = sample_rate
         self.channels = channels
         self._temp_files = []
+        self._temp_lock = threading.Lock()
 
     def ensure_sink_exists(self):
         """Check if the virtual sink and source exist. Create links if needed.
@@ -70,29 +73,40 @@ class AudioRouter:
             try:
                 subprocess.run(
                     ["pw-link", "-d", out_port, in_port],
-                    capture_output=True, timeout=5,
+                    capture_output=True, timeout=5, check=False,
                 )
-            except (subprocess.TimeoutExpired, FileNotFoundError):
+            except (subprocess.TimeoutExpired, FileNotFoundError,
+                    OSError):
                 pass
 
         for out_port, in_port in links_needed:
             # Check if link already exists
+            link_exists = False
             try:
                 result = subprocess.run(
                     ["pw-link", "-l"], capture_output=True,
                     text=True, timeout=5,
                 )
-                if f"{out_port}\n  |-> {in_port}" in result.stdout:
-                    continue  # Link already exists
-            except (subprocess.TimeoutExpired, FileNotFoundError):
+                if result.returncode == 0:
+                    link_exists = f"{out_port}\n  |-> {in_port}" in result.stdout
+            except (subprocess.TimeoutExpired, FileNotFoundError,
+                    OSError):
                 pass
+
+            if link_exists:
+                continue
+
             # Create the link
             try:
-                subprocess.run(
+                result = subprocess.run(
                     ["pw-link", out_port, in_port],
-                    capture_output=True, timeout=5,
+                    capture_output=True, timeout=5, check=False,
                 )
-            except (subprocess.TimeoutExpired, FileNotFoundError):
+                if result.returncode != 0:
+                    # Non-fatal — link may already exist or ports may not be ready
+                    pass
+            except (subprocess.TimeoutExpired, FileNotFoundError,
+                    OSError):
                 pass
 
     def _sink_exists(self):
@@ -102,10 +116,16 @@ class AudioRouter:
                 ["pw-dump"],
                 capture_output=True, text=True, timeout=10,
             )
-            # Quick check — more thorough would be to parse JSON
-            return f'"node.name","{self.sink_name}"' in result.stdout or \
-                   f'"node.name": "{self.sink_name}"' in result.stdout or \
-                   f'"node.name":"{self.sink_name}"' in result.stdout
+            try:
+                nodes = json.loads(result.stdout)
+                for node in nodes:
+                    props = node.get("info", {}).get("props", {})
+                    if props.get("node.name") == self.sink_name:
+                        return True
+                return False
+            except (json.JSONDecodeError, KeyError, TypeError):
+                # Fall back to simple string match
+                return f'"node.name": "{self.sink_name}"' in result.stdout
         except (subprocess.TimeoutExpired, FileNotFoundError):
             return False
 
@@ -166,14 +186,15 @@ class AudioRouter:
 
         Returns:
             tuple of (Popen, temp_path) — caller can .wait() on the Popen
-            and should eventually clean up the temp file.
+            to check the exit code and read stderr from proc.stderr.
+            Caller should eventually clean up the temp file.
         """
         tmp_path = self._write_temp_wav(wav_data)
 
         proc = subprocess.Popen(
             ["pw-play", "--target", self.sink_name, tmp_path],
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
         )
         return proc, tmp_path
 
@@ -186,7 +207,14 @@ class AudioRouter:
         # Detect format
         if data[:4] == b"RIFF":
             suffix = ".wav"
-        elif data[:3] == b"ID3" or data[:2] == b"\xff\xfb" or data[:2] == b"\xff\xf3":
+        elif data[:3] == b"ID3":
+            # ID3-tagged MP3
+            suffix = ".mp3"
+        elif data[:4] == b"OggS":
+            # Ogg Vorbis/Opus container
+            suffix = ".ogg"
+        elif len(data) >= 2 and data[0] == 0xFF and (data[1] & 0xE0) == 0xE0:
+            # Raw MPEG audio frame sync (0xFFE0-0xFFF7)
             suffix = ".mp3"
         else:
             suffix = ".wav"  # default
@@ -196,7 +224,8 @@ class AudioRouter:
         )
         with os.fdopen(fd, "wb") as f:
             f.write(data)
-        self._temp_files.append(tmp_path)
+        with self._temp_lock:
+            self._temp_files.append(tmp_path)
         return tmp_path
 
     def _cleanup_file(self, path):
@@ -204,14 +233,19 @@ class AudioRouter:
         try:
             if os.path.exists(path):
                 os.unlink(path)
-            if path in self._temp_files:
-                self._temp_files.remove(path)
         except OSError:
             pass
+        with self._temp_lock:
+            try:
+                self._temp_files.remove(path)
+            except ValueError:
+                pass
 
     def cleanup(self):
         """Remove all temporary WAV files."""
-        for path in list(self._temp_files):
+        with self._temp_lock:
+            paths = list(self._temp_files)
+        for path in paths:
             self._cleanup_file(path)
 
     def __del__(self):
