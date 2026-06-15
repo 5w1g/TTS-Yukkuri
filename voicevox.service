@@ -1,0 +1,14 @@
+[Unit]
+Description=VOICEVOX TTS Engine
+After=network.target pipewire.service
+
+[Service]
+Type=simple
+ExecStart=%h/voicevox/voicevox_engine-linux-cpu-x64/run
+Restart=on-failure
+RestartSec=5
+# VOICEVOX needs some time to load voice models
+TimeoutStartSec=60
+
+[Install]
+WantedBy=default.target

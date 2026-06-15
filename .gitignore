@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Test/temp files
+test_*.py
+/tmp/
+*.wav
+*.mp3
+
+# IDE / editor
+.claude/
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Config with local paths
+~/.config/yukkuri/config.json
+
+# Voice engine (downloaded separately)
+voicevox_engine/
