@@ -15,9 +15,15 @@ removes this restriction.
     2. Extract ``libAquesTalk10.so`` to ``~/aquestalk/`` or ``/usr/local/lib/``
     3. Optionally set ``AQUESTALK_LIB`` env var to the full .so path
 
-**Kana input**: AquesTalk10 requires phonetic kana input (e.g. コンニチワ).
-If ``pyopenjtalk`` is installed it will be used automatically to convert
-kanji to kana.  Without it, just type kana directly.
+**Input formats**: AquesTalk10 requires phonetic kana input.  This module
+automatically converts several input forms to katakana:
+
+* **Romaji** (Hepburn) — ``konnichiwa`` → ``コンニチワ`` (built-in, no deps)
+* **Kanji + kana** — ``今日は`` → ``キョーワ`` (requires pyopenjtalk)
+* **Kana** — ``コンニチワ`` → ``コンニチワ`` (pass-through)
+
+If ``pyopenjtalk`` is installed it will be used for kanji conversion
+automatically.  Without it, just type romaji or kana directly.
 """
 
 from __future__ import annotations
@@ -142,30 +148,144 @@ class SynthesisError(AquesTalkError):
 
 
 # ---------------------------------------------------------------------------
-# Kanji-to-Kana conversion (optional)
+# Text-to-Kana conversion
+# ---------------------------------------------------------------------------
+# AquesTalk10 requires phonetic kana input.  This pipeline converts several
+# input forms to katakana:
+#
+#   1. pyopenjtalk (if installed) — handles kanji + kana mixed text
+#   2. Built-in romaji→katakana  — Hepburn romanisation for ASCII input
+#   3. Pass-through               — text that is already kana
+#
+# Users can type:
+#   - Romaji:    "konnichiwa"        → コンニチワ
+#   - Kanji:     "今日は"             → キョーワ  (via pyopenjtalk)
+#   - Kana:      "コンニチワ"         → コンニチワ  (pass-through)
+#   - Mixed:     "私はgenkiです"      → ワタシハゲンキデス  (via pyopenjtalk)
+
+import re
+
+
+# ---------------------------------------------------------------------------
+# Romaji → Katakana  (Hepburn romanisation, stdlib-only)
 # ---------------------------------------------------------------------------
 
-def _kanji_to_kana(text: str) -> tuple[str, bool]:
-    """Convert Japanese text (kanji + kana) to phonetic kana.
+# Regex alternation ordered longest-first for greedy matching.
+# Entries grouped by length so the compiled pattern is deterministic.
+_ROMAJI_MAP: dict[str, str] = {
+    # -- digraphs (youon), 3 chars --
+    "kya": "キャ", "kyu": "キュ", "kyo": "キョ",
+    "sha": "シャ", "shu": "シュ", "sho": "ショ",
+    "cha": "チャ", "chu": "チュ", "cho": "チョ",
+    "nya": "ニャ", "nyu": "ニュ", "nyo": "ニョ",
+    "hya": "ヒャ", "hyu": "ヒュ", "hyo": "ヒョ",
+    "mya": "ミャ", "myu": "ミュ", "myo": "ミョ",
+    "rya": "リャ", "ryu": "リュ", "ryo": "リョ",
+    "gya": "ギャ", "gyu": "ギュ", "gyo": "ギョ",
+    "bya": "ビャ", "byu": "ビュ", "byo": "ビョ",
+    "pya": "ピャ", "pyu": "ピュ", "pyo": "ピョ",
+    # -- 3-char specials --
+    "tsu": "ツ", "shi": "シ", "chi": "チ",
+    # -- 2-char digraphs --
+    "ja": "ジャ", "ju": "ジュ", "jo": "ジョ",
+    # -- 2-char mora (basic + voiced + semi-voiced) --
+    "ka": "カ", "ki": "キ", "ku": "ク", "ke": "ケ", "ko": "コ",
+    "sa": "サ",              "su": "ス", "se": "セ", "so": "ソ",
+    "ta": "タ",              "te": "テ", "to": "ト",
+    "na": "ナ", "ni": "ニ", "nu": "ヌ", "ne": "ネ", "no": "ノ",
+    "ha": "ハ", "hi": "ヒ", "fu": "フ", "he": "ヘ", "ho": "ホ",
+    "ma": "マ", "mi": "ミ", "mu": "ム", "me": "メ", "mo": "モ",
+    "ya": "ヤ",              "yu": "ユ",              "yo": "ヨ",
+    "ra": "ラ", "ri": "リ", "ru": "ル", "re": "レ", "ro": "ロ",
+    "wa": "ワ", "wo": "ヲ",
+    "ga": "ガ", "gi": "ギ", "gu": "グ", "ge": "ゲ", "go": "ゴ",
+    "za": "ザ", "ji": "ジ", "zu": "ズ", "ze": "ゼ", "zo": "ゾ",
+    "da": "ダ", "di": "ヂ", "du": "ヅ", "de": "デ", "do": "ド",
+    "ba": "バ", "bi": "ビ", "bu": "ブ", "be": "ベ", "bo": "ボ",
+    "pa": "パ", "pi": "ピ", "pu": "プ", "pe": "ペ", "po": "ポ",
+    # -- vowels, 1 char --
+    "a": "ア", "i": "イ", "u": "ウ", "e": "エ", "o": "オ",
+}
 
-    Returns ``(converted_text, used_pyopenjtalk)``.  If pyopenjtalk is not
-    installed or conversion fails for any reason, the original text is
-    returned unchanged and the caller should ensure the input is valid kana.
+# Build pattern: longest keys first, then syllabic-n, then any single char.
+_ROMAJI_RE = re.compile(
+    "|".join(re.escape(k) for k in sorted(_ROMAJI_MAP, key=len, reverse=True))
+    + r"|n(?![aeiouy])"
+    + r"|."
+)
+
+
+def _romaji_to_katakana(text: str) -> str:
+    """Convert Hepburn romaji to katakana.
+
+    Handles:
+    - Basic gojuon (ka, ki, ku, …)
+    - Voiced / semi-voiced (ga, za, ba, pa, …)
+    - Digraphs (kya, sha, cha, …)
+    - Syllabic n (ン) before consonants or word-final
+    - Geminate consonant (kk, ss, tt, … → ッ)
+
+    Non-romaji characters (punctuation, numbers, unknown letters) are
+    passed through unchanged so they survive into the AquesTalk input.
     """
-    try:
-        import pyopenjtalk  # type: ignore[import-untyped]
+    # Pre-process: doubled consonants → small-tsu marker
+    # "kka" → "ッka", "ssa" → "ッsa", "tto" → "ッto", etc.
+    # Note: "n" is excluded — "nn" before a vowel is syllabic ン + na/ni/…
+    # (e.g. konnichiwa → コンニチワ), not geminate ッニ (which never occurs).
+    text = re.sub(r"([bcdfghjklmpqrstvwxyz])\1", r"ッ\1", text.lower().strip())
 
-        result = pyopenjtalk.g2p(text, kana=True)
-        # g2p returns space-separated readings; strip spaces for AquesTalk
-        cleaned = result.replace(" ", "").replace("　", "")
-        if cleaned:
-            return cleaned, True
-        return text, False  # empty result — fall back to original
-    except ImportError:
-        return text, False
-    except Exception:
-        # pyopenjtalk may raise RuntimeError, ValueError, etc. on bad input
-        return text, False
+    def _replace(m: re.Match[str]) -> str:
+        token = m.group(0)
+        if token == "n":
+            return "ン"  # syllabic n
+        return _ROMAJI_MAP.get(token, token)
+
+    return _ROMAJI_RE.sub(_replace, text)
+
+
+def _text_to_kana(text: str) -> tuple[str, bool]:
+    """Convert arbitrary Japanese text to phonetic katakana.
+
+    Routes input through the appropriate converter:
+
+    1. Text containing kanji/kana → pyopenjtalk (best quality)
+    2. ASCII / romaji text → built-in Hepburn→katakana converter
+    3. Everything else → pass-through
+
+    Returns ``(converted_text, used_converter)`` where *used_converter* is
+    ``True`` when a converter was applied (so the caller can suppress
+    redundant "install pyopenjtalk" hints).
+    """
+    # Detect Japanese characters in the input
+    has_japanese = any(
+        "぀" <= c <= "ゟ"   # Hiragana
+        or "゠" <= c <= "ヿ"  # Katakana
+        or "一" <= c <= "鿿"  # Kanji (CJK Unified Ideographs)
+        for c in text
+    )
+
+    if has_japanese:
+        # Strategy 1: pyopenjtalk handles kanji + kana → phonetic kana
+        try:
+            import pyopenjtalk  # type: ignore[import-untyped]
+
+            result = pyopenjtalk.g2p(text, kana=True)
+            cleaned = result.replace(" ", "").replace("　", "")
+            if cleaned:
+                return cleaned, True
+        except ImportError:
+            pass
+        except Exception:
+            pass  # pyopenjtalk may raise RuntimeError, ValueError on bad input
+
+    # Strategy 2: ASCII text → romaji→katakana
+    if all(c.isascii() or c.isspace() for c in text):
+        converted = _romaji_to_katakana(text)
+        if converted != text.strip():
+            return converted, True
+
+    # Strategy 3: pass-through (already kana, or couldn't convert)
+    return text, False
 
 
 # ---------------------------------------------------------------------------
@@ -358,8 +478,8 @@ class AquesTalkEngine:
         if not text or not text.strip():
             raise SynthesisError("Cannot synthesise empty text")
 
-        # Optional kanji → kana conversion
-        kana_text, used_jtalk = _kanji_to_kana(text.strip())
+        # Text → kana conversion (kanji, romaji, or pass-through)
+        kana_text, used_converter = _text_to_kana(text.strip())
         if not kana_text or not kana_text.strip():
             raise SynthesisError(
                 "Text converted to empty kana string.  "
@@ -413,13 +533,14 @@ class AquesTalkEngine:
 
                     # Add helpful hint for common errors
                     hint = ""
-                    if err_code == -5 and not used_jtalk:
+                    if err_code == -5 and not used_converter:
                         hint = (
-                            "\n\nTip: AquesTalk10 needs phonetic kana input. "
-                            "Install pyopenjtalk for automatic conversion:\n"
+                            "\n\nTip: AquesTalk10 needs phonetic kana input.\n"
+                            "Type romaji (e.g. konnichiwa) or kana directly.\n"
+                            "For best results, install pyopenjtalk:\n"
                             "  pip install --break-system-packages pyopenjtalk"
                         )
-                    elif err_code == -2 and used_jtalk:
+                    elif err_code == -2 and used_converter:
                         hint = (
                             "\n\nTip: The kana conversion may have produced "
                             "characters AquesTalk10 doesn't understand. "
