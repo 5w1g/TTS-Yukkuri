@@ -81,7 +81,8 @@ def _setup_readline(history_file):
     atexit.register(readline.write_history_file, histpath)
 
 
-def _speak(text, engine, engine_type, router, speaker, speed, pitch, intonation):
+def _speak(text, engine, engine_type, router, speaker, speed, pitch, intonation,
+           volume=1.0):
     """Synthesise *text* and play it.  Return ``True`` on success."""
     text = text.strip()
     if not text:
@@ -123,7 +124,7 @@ def _speak(text, engine, engine_type, router, speaker, speed, pitch, intonation)
                 speed_scale=speed, pitch_scale=pitch,
                 intonation_scale=intonation,
             )
-        router.play_wav(wav)
+        router.play_wav(wav, volume=volume)
         return True
     except SynthesisError as exc:
         print(f"  Synthesis error: {exc}", file=sys.stderr)
@@ -144,7 +145,7 @@ def _speak(text, engine, engine_type, router, speaker, speed, pitch, intonation)
 # REPL
 # ---------------------------------------------------------------------------
 
-def _print_header(engine, engine_type, speaker_id, speed, pitch, intonation):
+def _print_header(engine, engine_type, speaker_id, speed, pitch, intonation, volume=1.0):
     """Show a friendly banner on REPL start."""
     engine_name = "VOICEVOX"
     label = str(speaker_id)
@@ -168,11 +169,11 @@ def _print_header(engine, engine_type, speaker_id, speed, pitch, intonation):
     print(bar)
     print(f"  Yukkuri TTS  —  {engine_name}")
     print(f"  Speaker: {label}  |  Speed: {speed}  Pitch: {pitch}  "
-          f"Intonation: {intonation}")
+          f"Intonation: {intonation}  Vol: {volume:.2f}")
     print(bar)
     print("  Type text and press Enter to speak it.")
     print("  Commands: /help, /engine, /voice, /speaker, /speakers, "
-          "/speed, /pitch, /intonation, /status, /quit")
+          "/speed, /pitch, /intonation, /volume, /status, /quit")
     print()
 
 
@@ -194,6 +195,7 @@ def _show_help(engine_type="voicevox"):
     print("    /speed N                Set speed scale (0.5–2.0, 1.0=normal)")
     print("    /pitch N                Set pitch scale (0.5–2.0, 1.0=normal)")
     print("    /intonation N           Set intonation scale (0.0–2.0, 1.0=normal)")
+    print("    /volume N               Set output volume (0.0+, 1.0=normal)")
     print("    /status                 Show current settings and engine health")
     print("    /help                   Show this help")
     print("    /quit, /exit            Exit")
@@ -201,7 +203,8 @@ def _show_help(engine_type="voicevox"):
     print("  Anything else is synthesised and spoken aloud.")
 
 
-def _show_status(engine, engine_type, router, speaker_id, speed, pitch, intonation):
+def _show_status(engine, engine_type, router, speaker_id, speed, pitch, intonation,
+                  volume=1.0):
     """Print current state."""
     label = str(speaker_id)
     if engine_type == "edge":
@@ -227,6 +230,7 @@ def _show_status(engine, engine_type, router, speaker_id, speed, pitch, intonati
     print(f"  Speed:      {speed}")
     print(f"  Pitch:      {pitch}")
     print(f"  Intonation: {intonation}")
+    print(f"  Volume:     {volume:.2f}")
     print(f"  Sink:       {router.sink_name}")
 
 
@@ -262,11 +266,11 @@ def _active_engine():
 
 
 def repl(engine, edge_engine, polly_engine, aq_engine, engine_type, router, speaker_id,
-         speed, pitch, intonation, history_file="~/.yukkuri_history"):
+         speed, pitch, intonation, volume=1.0, history_file="~/.yukkuri_history"):
     """Interactive read-eval-speak loop."""
 
     _setup_readline(history_file)
-    _print_header(engine, engine_type, speaker_id, speed, pitch, intonation)
+    _print_header(engine, engine_type, speaker_id, speed, pitch, intonation, volume=volume)
 
     # Graceful exit on Ctrl+C and Ctrl+D
     def _sigint_handler(sig, frame):
@@ -299,7 +303,7 @@ def repl(engine, edge_engine, polly_engine, aq_engine, engine_type, router, spea
 
             elif cmd == "/status":
                 _show_status(_active_engine(), engine_type, router, speaker_id,
-                             speed, pitch, intonation)
+                             speed, pitch, intonation, volume=volume)
 
             elif cmd == "/engine":
                 if not arg:
@@ -466,6 +470,20 @@ def repl(engine, edge_engine, polly_engine, aq_engine, engine_type, router, spea
                     except ValueError:
                         print(f"  Invalid value: {arg.split()[0]}")
 
+            elif cmd == "/volume":
+                if not arg:
+                    print(f"  Current volume: {volume:.2f}")
+                else:
+                    try:
+                        val = float(arg.split()[0])
+                        if val > 0:
+                            volume = val
+                            print(f"  Volume set to {volume:.2f}")
+                        else:
+                            print("  Volume must be greater than 0")
+                    except ValueError:
+                        print(f"  Invalid value: {arg.split()[0]}")
+
             else:
                 # If it looks like a misspelled command, give a hint.
                 token = cmd.lstrip("/")
@@ -475,7 +493,7 @@ def repl(engine, edge_engine, polly_engine, aq_engine, engine_type, router, spea
                 else:
                     # Someone typed e.g. "/usr/bin" — speak it.
                     _speak(raw, _active_engine(), engine_type, router, speaker_id,
-                           speed, pitch, intonation)
+                           speed, pitch, intonation, volume=volume)
 
         # -- text to speak ---------------------------------------------
         else:
@@ -500,6 +518,7 @@ def main():
     speed = float(app_cfg.get("speed_scale", 1.0))
     pitch = float(app_cfg.get("pitch_scale", 1.0))
     intonation = float(app_cfg.get("intonation_scale", 1.0))
+    volume = float(audio_cfg.get("volume", 1.0))
     engine_type = app_cfg.get("engine", "voicevox")
 
     # Instantiate router ------------------------------------------------
@@ -590,17 +609,17 @@ def main():
         text = " ".join(sys.argv[1:])
         if text.strip():
             _speak(text, _active_engine(), engine_type, router, speaker_id,
-                   speed, pitch, intonation)
+                   speed, pitch, intonation, volume=volume)
 
     elif not sys.stdin.isatty():
         text = sys.stdin.read()
         if text.strip():
             _speak(text, _active_engine(), engine_type, router, speaker_id,
-                   speed, pitch, intonation)
+                   speed, pitch, intonation, volume=volume)
 
     else:
         repl(engine, edge_engine, polly_engine, aq_engine, engine_type, router,
-             speaker_id, speed, pitch, intonation,
+             speaker_id, speed, pitch, intonation, volume=volume,
              history_file=app_cfg.get("history_file", "~/.yukkuri_history"))
 
 

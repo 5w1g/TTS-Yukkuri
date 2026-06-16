@@ -84,6 +84,16 @@ Discord Voice Chat (select as Input Device)
 - `yukkuri_sink:monitor_FL/FR` → `yukkuri_source:input_FL/FR`
 - Also removes spurious auto-links from source inputs to sink playback (feedback prevention)
 
+**Source volume boost** (in `audio_router.py._boost_source_volume()`):
+- Sets `yukkuri_source` to 300% via `pactl set-source-volume`
+- TTS audio is media-playback level (~-23 LUFS), much quieter than a microphone
+- Boosting the source compensates so Discord hears TTS at normal speaking volume
+
+**Software gain** (in `audio_router.py._apply_gain()`):
+- Volume slider applies gain directly to WAV PCM samples (16/32-bit)
+- Guaranteed to work regardless of PipeWire `--volume` behavior on null sinks
+- MP3/Ogg pass through unchanged (gain handled by `pw-play --volume` fallback)
+
 **Format detection** in `_write_temp_wav()`:
 - RIFF → `.wav`, ID3 → `.mp3`, OggS → `.ogg`
 - Raw MPEG sync (`0xFFE0-0xFFF7`) → `.mp3`
@@ -103,11 +113,10 @@ Default location: `$XDG_CONFIG_HOME/yukkuri/config.json` (falls back to `~/.conf
     "edge": {"voice": "en-US-BrianNeural"},
     "polly": {"voice": "Brian"},
     "aquestalk": {"voice": "f1", "lib_path": ""},
-    "audio": {"sink_name": "yukkuri_sink", "sample_rate": 48000, "channels": 2},
+    "audio": {"sink_name": "yukkuri_sink", "sample_rate": 48000, "channels": 2, "volume": 1.0},
     "app": {
         "history_file": "~/.yukkuri_history",
-        "speed_scale": 1.0, "pitch_scale": 1.0, "intonation_scale": 1.0,
-        "engine": "voicevox"
+        "speed_scale": 1.0, "pitch_scale": 1.0, "intonation_scale": 1.0
     }
 }
 ```
@@ -123,7 +132,7 @@ Secrets (AWS keys) go in `~/.aws/credentials`, never in config.json or the repo.
 - Dark Catppuccin theme (bg=#1e1e2e, accent=#cba6f7)
 - Four engine toggle buttons: [VOICEVOX] [Edge TTS] [Polly] [AquesTalk10]
 - Voice dropdown repopulates per engine (async for cloud engines)
-- Speed/Pitch/Intonation sliders (0.5-2.0, Polly maps intonation → volume)
+- Speed/Pitch/Intonation/Volume sliders (Polly maps intonation → SSML volume)
 - 6 presets: Normal, Yukkuri, Fast, High Pitch, Whisper, Energetic
 - History listbox with double-click replay
 - Status dot (green/yellow/red) + engine footer
@@ -139,7 +148,7 @@ Secrets (AWS keys) go in `~/.aws/credentials`, never in config.json or the repo.
 - Pipe: `echo "hello" | yukkuri.py`
 - **Engine fallback** — if the configured engine is unavailable, falls through to next available
   engine (priority: configured → AquesTalk → Edge → Polly → VOICEVOX)
-- Commands: `/engine`, `/voice`, `/voices`, `/speaker`, `/speakers`, `/speed`, `/pitch`, `/intonation`, `/status`, `/help`, `/quit`
+- Commands: `/engine`, `/voice`, `/voices`, `/speaker`, `/speakers`, `/speed`, `/pitch`, `/intonation`, `/volume`, `/status`, `/help`, `/quit`
 
 ## Key Design Decisions
 
@@ -154,7 +163,7 @@ Secrets (AWS keys) go in `~/.aws/credentials`, never in config.json or the repo.
 
 - Repo: `5w1g/TTS-Yukkuri` on GitHub (public)
 - No secrets, tokens, or credentials in any committed file
-- `.gitignore` excludes: `__pycache__/`, `*.wav`, `*.mp3`, `.claude/`, `voicevox_engine/`, test files
+- `.gitignore` excludes: `__pycache__/`, `*.wav`, `*.mp3`, `.claude/`, `voicevox/`, `aquestalk/`, test files
 
 ## Running
 

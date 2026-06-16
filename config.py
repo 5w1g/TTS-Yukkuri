@@ -28,6 +28,7 @@ DEFAULT_CONFIG = {
         "sink_name": "yukkuri_sink",
         "sample_rate": 48000,
         "channels": 2,
+        "volume": 1.0,
     },
     "app": {
         "history_file": "~/.yukkuri_history",

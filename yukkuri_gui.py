@@ -153,6 +153,7 @@ class YukkuriApp:
         self.speed = tk.DoubleVar(value=app_cfg.get("speed_scale", 1.0))
         self.pitch = tk.DoubleVar(value=app_cfg.get("pitch_scale", 1.0))
         self.intonation = tk.DoubleVar(value=app_cfg.get("intonation_scale", 1.0))
+        self.volume = tk.DoubleVar(value=audio.get("volume", 1.0))
 
         # Voice dropdown data
         self.speakers_list = []
@@ -322,6 +323,7 @@ class YukkuriApp:
         self._build_slider(settings_frame, "Speed", self.speed, 0.5, 2.0, 0.05)
         self._build_slider(settings_frame, "Pitch", self.pitch, 0.5, 2.0, 0.05)
         self._build_slider(settings_frame, "Intonation", self.intonation, 0.0, 2.0, 0.05)
+        self._build_slider(settings_frame, "Volume", self.volume, 0.0, 4.0, 0.05)
 
         # -- Presets --
         presets_label = tk.Label(
@@ -688,6 +690,7 @@ class YukkuriApp:
         speed = self.speed.get()
         pitch = self.pitch.get()
         intonation = self.intonation.get()
+        volume = self.volume.get()
 
         # Capture engine references for the worker thread
         vv_engine = self.engine
@@ -743,7 +746,7 @@ class YukkuriApp:
                 self.root.after(0, lambda: self.status_label.config(
                     text="Playing...", fg=YELLOW,
                 ))
-                self.router.play_wav(audio)
+                self.router.play_wav(audio, volume=volume)
                 self.root.after(0, self._on_speak_done)
             except EngineNotRunning:
                 self.root.after(0, lambda: self._on_speak_error(
@@ -969,6 +972,7 @@ class YukkuriApp:
             self.cfg["app"]["speed_scale"] = self.speed.get()
             self.cfg["app"]["pitch_scale"] = self.pitch.get()
             self.cfg["app"]["intonation_scale"] = self.intonation.get()
+            self.cfg["audio"]["volume"] = self.volume.get()
             self.cfg["app"]["engine"] = self.engine_type
             save_config(self.cfg)
             self.router.cleanup()
