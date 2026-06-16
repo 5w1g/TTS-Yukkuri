@@ -18,12 +18,16 @@ removes this restriction.
 **Input formats**: AquesTalk10 requires phonetic kana input.  This module
 automatically converts several input forms to katakana:
 
+* **English** — ``hello`` → ``ヘロー`` (requires e2k_)
 * **Romaji** (Hepburn) — ``konnichiwa`` → ``コンニチワ`` (built-in, no deps)
-* **Kanji + kana** — ``今日は`` → ``キョーワ`` (requires pyopenjtalk)
+* **Kanji + kana** — ``今日は`` → ``キョーワ`` (requires pyopenjtalk_)
 * **Kana** — ``コンニチワ`` → ``コンニチワ`` (pass-through)
 
-If ``pyopenjtalk`` is installed it will be used for kanji conversion
-automatically.  Without it, just type romaji or kana directly.
+If ``pyopenjtalk`` or ``e2k`` are installed they will be used automatically.
+Without them, just type romaji or kana directly.
+
+.. _e2k: https://pypi.org/project/e2k/
+.. _pyopenjtalk: https://pypi.org/project/pyopenjtalk/
 """
 
 from __future__ import annotations
@@ -155,10 +159,12 @@ class SynthesisError(AquesTalkError):
 #
 #   1. pyopenjtalk (if installed) — handles kanji + kana mixed text
 #   2. Built-in romaji→katakana  — Hepburn romanisation for ASCII input
-#   3. Pass-through               — text that is already kana
+#   3. e2k (if installed)        — English→katakana for non-romaji ASCII
+#   4. Pass-through               — text that is already kana
 #
 # Users can type:
 #   - Romaji:    "konnichiwa"        → コンニチワ
+#   - English:   "hello"             → ヘロー     (via e2k)
 #   - Kanji:     "今日は"             → キョーワ  (via pyopenjtalk)
 #   - Kana:      "コンニチワ"         → コンニチワ  (pass-through)
 #   - Mixed:     "私はgenkiです"      → ワタシハゲンキデス  (via pyopenjtalk)
@@ -243,6 +249,37 @@ def _romaji_to_katakana(text: str) -> str:
     return _ROMAJI_RE.sub(_replace, text)
 
 
+def _english_to_katakana(text: str) -> Optional[str]:
+    """Convert English text to katakana using the e2k library.
+
+    Returns katakana string on success, ``None`` if e2k is not installed
+    or conversion fails.
+    """
+    try:
+        from e2k import C2K  # type: ignore[import-untyped]
+    except ImportError:
+        return None
+
+    try:
+        c2k = C2K()
+        result = c2k(text.strip())
+        if result and result != text.strip():
+            return result
+    except Exception:
+        pass
+    return None
+
+
+# Regex for detecting non-katakana characters in converted output.
+# Katakana block U+30A0–U+30FF, plus some punctuation that's safe.
+_NON_KATAKANA_RE = re.compile(r"[^ァ-ヴーッ 　]")
+
+
+def _is_valid_kana(text: str) -> bool:
+    """Return True if *text* contains only katakana (and spaces)."""
+    return not _NON_KATAKANA_RE.search(text)
+
+
 def _text_to_kana(text: str) -> tuple[str, bool]:
     """Convert arbitrary Japanese text to phonetic katakana.
 
@@ -278,11 +315,21 @@ def _text_to_kana(text: str) -> tuple[str, bool]:
         except Exception:
             pass  # pyopenjtalk may raise RuntimeError, ValueError on bad input
 
-    # Strategy 2: ASCII text → romaji→katakana
+    # Strategy 2: ASCII text → romaji first, then English→katakana
     if all(c.isascii() or c.isspace() for c in text):
-        converted = _romaji_to_katakana(text)
-        if converted != text.strip():
-            return converted, True
+        romaji_result = _romaji_to_katakana(text)
+        if _is_valid_kana(romaji_result):
+            return romaji_result, True
+
+        # Romaji converter left ASCII chars — probably English, try e2k
+        english_result = _english_to_katakana(text)
+        if english_result and _is_valid_kana(english_result):
+            return english_result, True
+
+        # If we got something usable from romaji (even slightly broken),
+        # return it — AquesTalk might still pronounce it
+        if romaji_result != text.strip():
+            return romaji_result, True
 
     # Strategy 3: pass-through (already kana, or couldn't convert)
     return text, False
