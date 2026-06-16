@@ -30,8 +30,6 @@ Without them, just type romaji or kana directly.
 .. _pyopenjtalk: https://pypi.org/project/pyopenjtalk/
 """
 
-from __future__ import annotations
-
 import ctypes
 import ctypes.util
 import os

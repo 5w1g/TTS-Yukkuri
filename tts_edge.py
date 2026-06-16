@@ -8,7 +8,6 @@ Install: pip install --break-system-packages edge-tts
 
 import asyncio
 import os
-import subprocess
 import tempfile
 import threading
 
@@ -120,18 +119,6 @@ class EdgeTTSEngine:
                 os.unlink(out_path)
             except OSError:
                 pass
-
-    def synthesize_to_file(self, text, voice=DEFAULT_VOICE,
-                           output_path=None, rate="+0%", pitch="+0Hz"):
-        """Synthesize and save directly to a file."""
-        import edge_tts
-
-        if output_path is None:
-            output_path = tempfile.mktemp(suffix=".mp3")
-
-        communicate = edge_tts.Communicate(text, voice, rate=rate, pitch=pitch)
-        self._run_async(communicate.save(output_path))
-        return output_path
 
     def _run_async(self, coro):
         """Run an async coroutine in a way that works even if an event

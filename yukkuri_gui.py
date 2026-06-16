@@ -40,12 +40,11 @@ except ImportError:
 
 # AquesTalk10 (authentic Yukkuri voice) is optional
 try:
-    from tts_aquestalk import AquesTalkEngine, POPULAR_VOICES as AQUESTALK_QUICK
+    from tts_aquestalk import AquesTalkEngine
     from tts_aquestalk import AquesTalkError
     HAS_AQUESTALK = True
 except ImportError:
     HAS_AQUESTALK = False
-    AQUESTALK_QUICK = {}
     AquesTalkEngine = None
     class AquesTalkError(Exception): pass  # dummy — never raised when engine unavailable
 
@@ -60,7 +59,6 @@ SURFACE_RAISED = "#45475a"
 RED = "#f38ba8"
 GREEN = "#a6e3a1"
 YELLOW = "#f9e2af"
-BLUE = "#89b4fa"
 FONT = ("Sans", 11)
 FONT_BOLD = ("Sans", 11, "bold")
 FONT_SMALL = ("Sans", 9)

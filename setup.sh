@@ -41,7 +41,7 @@ command_exists() {
 
 # ── Step 1: System dependencies ────────────────────────────────────────────
 step_system_deps() {
-    header "Step 1 / 6 — Installing system dependencies"
+    header "Step 1 / 7 — Installing system dependencies"
 
     local missing=()
     command_exists python3       || missing+=(python3)
@@ -61,9 +61,9 @@ step_system_deps() {
 
 # ── Step 2: VOICEVOX engine ───────────────────────────────────────────────
 step_voicevox() {
-    header "Step 2 / 6 — VOICEVOX engine"
+    header "Step 2 / 7 — VOICEVOX engine"
 
-    local engine_dir="$HOME/voicevox/voicevox_engine-linux-cpu-x64"
+    local engine_dir="$HOME/TTS/voicevox/voicevox_engine-linux-cpu-x64"
     local archive_url="https://github.com/VOICEVOX/voicevox_engine/releases/download/0.25.2/voicevox_engine-linux-cpu-x64-0.25.2.7z.001"
 
     if [[ -d "$engine_dir" ]]; then
@@ -73,37 +73,37 @@ step_voicevox() {
 
     info "VOICEVOX engine not found. Downloading..."
 
-    mkdir -p "$HOME/voicevox"
+    mkdir -p "$HOME/TTS/voicevox"
 
     local archive_name
     archive_name="$(basename "$archive_url")"
 
     echo ""
-    curl -L --progress-bar "$archive_url" -o "$HOME/voicevox/$archive_name"
+    curl -L --progress-bar "$archive_url" -o "$HOME/TTS/voicevox/$archive_name"
     echo ""
 
     # Check that the download succeeded (non-zero file)
-    if [[ ! -f "$HOME/voicevox/$archive_name" ]] || [[ ! -s "$HOME/voicevox/$archive_name" ]]; then
+    if [[ ! -f "$HOME/TTS/voicevox/$archive_name" ]] || [[ ! -s "$HOME/TTS/voicevox/$archive_name" ]]; then
         err "Download failed or produced an empty file."
         exit 1
     fi
     ok "Download complete."
 
     info "Extracting with 7z..."
-    if ! 7z x "$HOME/voicevox/$archive_name" -o"$HOME/voicevox/" -y &>/dev/null; then
+    if ! 7z x "$HOME/TTS/voicevox/$archive_name" -o"$HOME/TTS/voicevox/" -y &>/dev/null; then
         err "Extraction failed. The archive may be corrupt."
         exit 1
     fi
     ok "Extraction complete."
 
     info "Cleaning up archive..."
-    rm -f "$HOME/voicevox/$archive_name"
+    rm -f "$HOME/TTS/voicevox/$archive_name"
     ok "Cleanup done."
 
     # Verify the engine directory now exists
     if [[ ! -d "$engine_dir" ]]; then
         warn "Expected engine directory not found after extraction at ${engine_dir}"
-        warn "Please check the extracted contents of ~/TTS/voicevox/ manually."
+        warn "Please check the extracted contents of $engine_dir manually."
     else
         ok "VOICEVOX engine ready at ${engine_dir}"
     fi

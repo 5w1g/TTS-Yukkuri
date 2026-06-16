@@ -166,37 +166,3 @@ class VoicevoxEngine:
         )
 
         return wav_data
-
-    def synthesize_mora(self, text, speaker=1):
-        """Synthesize and return mora timing info alongside audio.
-
-        Returns:
-            tuple of (wav_bytes, mora_list) where mora_list has
-            timing information for lip-sync / visual feedback.
-        """
-        encoded_text = urllib.parse.quote(text)
-        query_data, _ = self._request(
-            "POST",
-            f"/audio_query?text={encoded_text}&speaker={speaker}",
-        )
-        query = json.loads(query_data)
-
-        # Get mora data from the query (returned alongside audio query)
-        mora_data = []
-        for phrase in query.get("accent_phrases", []):
-            for mora in phrase.get("moras", []):
-                mora_data.append({
-                    "text": mora.get("text", ""),
-                    "consonant_length": mora.get("consonant_length", 0),
-                    "vowel_length": mora.get("vowel_length", 0),
-                    "pitch": mora.get("pitch", 0),
-                })
-
-        wav_data, _ = self._request(
-            "POST",
-            f"/synthesis?speaker={speaker}",
-            body=json.dumps(query),
-            headers={"Content-Type": "application/json"},
-        )
-
-        return wav_data, mora_data

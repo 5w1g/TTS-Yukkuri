@@ -17,10 +17,7 @@ the project config.  Use ONE of:
 
 """
 
-from __future__ import annotations
 
-import logging
-import re
 import threading
 from typing import Optional
 from xml.sax.saxutils import escape as _xml_escape
@@ -28,7 +25,8 @@ from xml.sax.saxutils import escape as _xml_escape
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 
-logger = logging.getLogger(__name__)
+
+
 
 
 # ---------------------------------------------------------------------------
@@ -93,9 +91,6 @@ class PollyEngine:
         region_name: AWS region (default ``us-east-1``).
         profile_name: Named AWS config profile (default ``None`` → default).
     """
-
-    # Speech mark types for word-boundary events (future use)
-    # https://docs.aws.amazon.com/polly/latest/dg/using-speechmarks.html
 
     def __init__(
         self,

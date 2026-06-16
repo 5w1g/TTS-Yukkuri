@@ -18,9 +18,6 @@ test_*.py
 .DS_Store
 Thumbs.db
 
-# Config with local paths
-~/.config/yukkuri/config.json
-
 # Engine binaries (downloaded separately — bundled in repo dir for portability)
 voicevox/
 aquestalk/

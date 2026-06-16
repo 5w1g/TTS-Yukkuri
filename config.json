@@ -3,7 +3,15 @@
         "host": "127.0.0.1",
         "port": 50021,
         "speaker": 1,
-        "timeout_seconds": 30
+        "timeout_seconds": 30,
+        "engine_path": "~/TTS/voicevox/voicevox_engine-linux-cpu-x64/run",
+        "auto_start": true
+    },
+    "edge": {
+        "voice": "en-US-BrianNeural"
+    },
+    "polly": {
+        "voice": "Brian"
     },
     "aquestalk": {
         "lib_path": "",

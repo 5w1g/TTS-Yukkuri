@@ -250,6 +250,17 @@ def _show_speakers(engine):
             print(f"  {name}")
 
 
+def _active_engine():
+        """Return the active engine instance for the current type."""
+        if engine_type == "edge":
+            return edge_engine
+        elif engine_type == "polly":
+            return polly_engine
+        elif engine_type == "aquestalk":
+            return aq_engine
+        return engine
+
+
 def repl(engine, edge_engine, polly_engine, aq_engine, engine_type, router, speaker_id,
          speed, pitch, intonation, history_file="~/.yukkuri_history"):
     """Interactive read-eval-speak loop."""
@@ -263,16 +274,6 @@ def repl(engine, edge_engine, polly_engine, aq_engine, engine_type, router, spea
         sys.exit(0)
 
     signal.signal(signal.SIGINT, _sigint_handler)
-
-    def _active():
-        """Return the active engine instance for the current type."""
-        if engine_type == "edge":
-            return edge_engine
-        elif engine_type == "polly":
-            return polly_engine
-        elif engine_type == "aquestalk":
-            return aq_engine
-        return engine
 
     while True:
         try:
@@ -297,7 +298,7 @@ def repl(engine, edge_engine, polly_engine, aq_engine, engine_type, router, spea
                 _show_help(engine_type)
 
             elif cmd == "/status":
-                _show_status(_active(), engine_type, router, speaker_id,
+                _show_status(_active_engine(), engine_type, router, speaker_id,
                              speed, pitch, intonation)
 
             elif cmd == "/engine":
@@ -473,12 +474,12 @@ def repl(engine, edge_engine, polly_engine, aq_engine, engine_type, router, spea
                           f"available commands.")
                 else:
                     # Someone typed e.g. "/usr/bin" — speak it.
-                    _speak(raw, _active(), engine_type, router, speaker_id,
+                    _speak(raw, _active_engine(), engine_type, router, speaker_id,
                            speed, pitch, intonation)
 
         # -- text to speak ---------------------------------------------
         else:
-            _speak(raw, _active(), engine_type, router, speaker_id,
+            _speak(raw, _active_engine(), engine_type, router, speaker_id,
                    speed, pitch, intonation)
 
     print("Goodbye!")
@@ -583,16 +584,6 @@ def main():
             file=sys.stderr,
         )
         sys.exit(1)
-
-    def _active_engine():
-        """Return the active engine instance for the current type."""
-        if engine_type == "edge":
-            return edge_engine
-        elif engine_type == "polly":
-            return polly_engine
-        elif engine_type == "aquestalk":
-            return aq_engine
-        return engine
 
     # Mode dispatch -------------------------------------------------------
     if len(sys.argv) > 1:
