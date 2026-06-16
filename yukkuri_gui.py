@@ -83,7 +83,7 @@ class YukkuriApp:
     def __init__(self):
         self.root = tk.Tk()
         self.root.title("Yukkuri TTS")
-        self.root.geometry("720x620")
+        self.root.geometry("1010x794")
         self.root.configure(bg=BG)
         self.root.resizable(True, True)
         self.root.minsize(520, 500)
