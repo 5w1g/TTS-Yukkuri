@@ -136,18 +136,21 @@ class YukkuriApp:
         if self.engine_type == "aquestalk" and not self.aq_engine:
             self.engine_type = "voicevox"
 
-        # Current voice settings
+        # Remember voice selection per engine type — init BEFORE speaker_id
+        # so the initial voice is read from the correct per-engine config key.
+        self._voice_memory = {
+            "voicevox": str(vv["speaker"]),
+            "edge": self.cfg.get("edge", {}).get("voice", DEFAULT_VOICE),
+            "polly": self.cfg.get("polly", {}).get("voice", "Brian"),
+            "aquestalk": self.cfg.get("aquestalk", {}).get("voice", "f1"),
+        }
+
+        # Current voice settings — use per-engine memory, not shared app.voice
         self.speaker_id = tk.StringVar(value=str(vv["speaker"]))
-        # Ensure correct default if starting in non-VOICEVOX mode
-        if self.engine_type == "edge":
-            saved_voice = app_cfg.get("voice", DEFAULT_VOICE)
-            self.speaker_id.set(saved_voice)
-        elif self.engine_type == "polly":
-            saved_voice = app_cfg.get("voice", "Brian")
-            self.speaker_id.set(saved_voice)
-        elif self.engine_type == "aquestalk":
-            saved_voice = app_cfg.get("voice", "f1")
-            self.speaker_id.set(saved_voice)
+        if self.engine_type != "voicevox":
+            self.speaker_id.set(
+                self._voice_memory.get(self.engine_type, str(vv["speaker"]))
+            )
 
         self.speed = tk.DoubleVar(value=app_cfg.get("speed_scale", 1.0))
         self.pitch = tk.DoubleVar(value=app_cfg.get("pitch_scale", 1.0))
@@ -155,16 +158,9 @@ class YukkuriApp:
 
         # Voice dropdown data
         self.speakers_list = []
-        self.speaker_map = {}      # "Name — Style" -> style_id  (VOICEVOX)
-        self.edge_voice_map = {}   # "Brian (en-US-BrianNeural)" -> short_name
-
-        # Remember voice selection per engine type
-        self._voice_memory = {
-            "voicevox": str(vv["speaker"]),
-            "edge": self.cfg.get("edge", {}).get("voice", DEFAULT_VOICE),
-            "polly": self.cfg.get("polly", {}).get("voice", "Brian"),
-            "aquestalk": self.cfg.get("aquestalk", {}).get("voice", "f1"),
-        }
+        self.speaker_map = {}       # "Name — Style" -> style_id  (VOICEVOX)
+        self.edge_voice_map = {}    # "Brian (en-US-BrianNeural)" -> short_name
+        self.polly_voice_map = {}   # "brian (Brian)" -> VoiceId
 
         # Playback lock
         self._speaking = False
@@ -545,7 +541,7 @@ class YukkuriApp:
             except Exception:
                 pass
             self.root.after(0, lambda: self._on_voices_loaded(
-                names, voice_map, current_name
+                names, voice_map, current_name, "edge"
             ))
 
         threading.Thread(target=_worker, daemon=True).start()
@@ -585,14 +581,17 @@ class YukkuriApp:
             except Exception:
                 pass
             self.root.after(0, lambda: self._on_voices_loaded(
-                names, voice_map, current_name
+                names, voice_map, current_name, "polly"
             ))
 
         threading.Thread(target=_worker, daemon=True).start()
 
-    def _on_voices_loaded(self, names, voice_map, current_name):
+    def _on_voices_loaded(self, names, voice_map, current_name, engine_type):
         """Callback: update voice dropdown after background fetch."""
-        self.edge_voice_map = voice_map
+        if engine_type == "polly":
+            self.polly_voice_map = voice_map
+        else:
+            self.edge_voice_map = voice_map
         self.voice_combo.config(values=names)
         if current_name:
             self.voice_combo.set(current_name)
@@ -634,16 +633,24 @@ class YukkuriApp:
     def _on_voice_changed(self, event=None):
         """Handle voice dropdown selection."""
         selection = self.voice_combo.get()
-        if self.engine_type in ("edge", "polly", "aquestalk"):
-            if self.engine_type == "aquestalk":
-                # AquesTalk combo values: "f1 (Classic Yukkuri)" → voice_id = "f1"
-                voice_id = selection.split()[0] if selection else "f1"
+        if self.engine_type == "aquestalk":
+            # AquesTalk combo values: "f1 (Classic Yukkuri)" → voice_id = "f1"
+            voice_id = selection.split()[0] if selection else "f1"
+            self.speaker_id.set(voice_id)
+            self._voice_memory["aquestalk"] = voice_id
+        elif self.engine_type == "polly":
+            if selection in self.polly_voice_map:
+                voice_id = self.polly_voice_map[selection]
                 self.speaker_id.set(voice_id)
-                self._voice_memory["aquestalk"] = voice_id
-            elif selection in self.edge_voice_map:
+                self._voice_memory["polly"] = voice_id
+            elif selection != "Loading voices...":
+                self.status_label.config(
+                    text=f"Unknown voice: {selection}", fg=YELLOW)
+        elif self.engine_type == "edge":
+            if selection in self.edge_voice_map:
                 voice_id = self.edge_voice_map[selection]
                 self.speaker_id.set(voice_id)
-                self._voice_memory[self.engine_type] = voice_id
+                self._voice_memory["edge"] = voice_id
             elif selection != "Loading voices...":
                 self.status_label.config(
                     text=f"Unknown voice: {selection}", fg=YELLOW)
@@ -952,12 +959,15 @@ class YukkuriApp:
 
     def run(self):
         def _on_close():
+            # Save current VOICEVOX speaker
             if self.engine_type == "voicevox" and self.speaker_id.get().isdigit():
                 self.cfg["voicevox"]["speaker"] = int(self.speaker_id.get())
-            # Save voice selection per engine — each engine gets its own key
-            voice = self.speaker_id.get()
-            if self.engine_type in ("edge", "polly", "aquestalk"):
-                self.cfg.setdefault(self.engine_type, {})["voice"] = voice
+            # Persist ALL per-engine voice selections — not just the active engine
+            for eng in ("edge", "polly", "aquestalk"):
+                if eng in self._voice_memory:
+                    self.cfg.setdefault(eng, {})["voice"] = self._voice_memory[eng]
+            # Clean up stale shared voice key left by older code
+            self.cfg["app"].pop("voice", None)
             self.cfg["app"]["speed_scale"] = self.speed.get()
             self.cfg["app"]["pitch_scale"] = self.pitch.get()
             self.cfg["app"]["intonation_scale"] = self.intonation.get()
