@@ -884,6 +884,8 @@ class YukkuriApp:
                         except Exception:
                             self.root.title("Yukkuri TTS — VOICEVOX")
                         self.engine_footer.config(text="● Connected (auto-started)")
+                        # Repopulate the voice dropdown now that engine is up
+                        self._refresh_voices()
                     else:
                         self.root.title("Yukkuri TTS — VOICEVOX (offline)")
                         self.status_label.config(
