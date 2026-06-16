@@ -24,7 +24,7 @@ virtual audio sink.
 ### 2. Start VOICEVOX engine
 
 ```bash
-~/voicevox/voicevox_engine-linux-cpu-x64/run
+~/TTS/voicevox/voicevox_engine-linux-cpu-x64/run
 ```
 
 The engine serves its API at `http://localhost:50021`. It takes 10–30 seconds
@@ -147,7 +147,7 @@ systemctl --user enable --now voicevox.service
 ## Troubleshooting
 
 **"Cannot reach VOICEVOX engine"**
-Make sure the engine is running: `~/voicevox/voicevox_engine-linux-cpu-x64/run`
+Make sure the engine is running: `~/TTS/voicevox/voicevox_engine-linux-cpu-x64/run`
 
 **Virtual sink not appearing in Discord**
 Restart PipeWire: `systemctl --user restart pipewire pipewire-pulse`

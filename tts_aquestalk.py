@@ -12,7 +12,7 @@ removes this restriction.
 **Setup**:
     1. Download the Linux evaluation SDK from:
        https://www.a-quest.com/products/aquestalk10.html
-    2. Extract ``libAquesTalk10.so`` to ``~/aquestalk/`` or ``/usr/local/lib/``
+    2. Extract ``libAquesTalk10.so`` to ``~/TTS/aquestalk/`` or ``/usr/local/lib/``
     3. Optionally set ``AQUESTALK_LIB`` env var to the full .so path
 
 **Input formats**: AquesTalk10 requires phonetic kana input.  This module
@@ -357,7 +357,7 @@ class AquesTalkEngine:
     # Known search paths for libAquesTalk10.so
     _SEARCH_PATHS = [
         "/usr/local/lib/libAquesTalk10.so",
-        os.path.expanduser("~/aquestalk/libAquesTalk10.so"),
+        os.path.expanduser("~/TTS/aquestalk/libAquesTalk10.so"),
         "/usr/lib/libAquesTalk10.so",
     ]
 
@@ -407,7 +407,7 @@ class AquesTalkEngine:
                 f"AquesTalk10 library not found at: {path}\n"
                 f"Download the evaluation SDK from:\n"
                 f"  https://www.a-quest.com/products/aquestalk10.html\n"
-                f"Extract libAquesTalk10.so to ~/aquestalk/ or /usr/local/lib/"
+                f"Extract libAquesTalk10.so to ~/TTS/aquestalk/ or /usr/local/lib/"
             )
 
         try:
@@ -648,7 +648,7 @@ if __name__ == "__main__":
         print("Download the evaluation SDK from:", file=sys.stderr)
         print("  https://www.a-quest.com/products/aquestalk10.html", file=sys.stderr)
         print(
-            "Extract libAquesTalk10.so to ~/aquestalk/ or /usr/local/lib/",
+            "Extract libAquesTalk10.so to ~/TTS/aquestalk/ or /usr/local/lib/",
             file=sys.stderr,
         )
         print(

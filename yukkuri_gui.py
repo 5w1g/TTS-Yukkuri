@@ -866,7 +866,7 @@ class YukkuriApp:
                 if vv_cfg.get("auto_start", True):
                     engine_path = os.path.expanduser(
                         vv_cfg.get("engine_path",
-                                   "~/voicevox/voicevox_engine-linux-cpu-x64/run")
+                                   "~/TTS/voicevox/voicevox_engine-linux-cpu-x64/run")
                     )
                     self.status_label.config(
                         text="Starting VOICEVOX engine...", fg=YELLOW,

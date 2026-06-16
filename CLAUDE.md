@@ -38,7 +38,7 @@ Discord Voice Chat (select as Input Device)
 ### 1. VOICEVOX (local, free)
 - Japanese TTS, 127 voice styles across 43 speakers
 - Runs as local HTTP server on port 50021
-- Download from GitHub releases, extract to `~/voicevox/`
+- Download from GitHub releases, extract to `~/TTS/voicevox/`
 - Speaker 1 = Zundamon (closest to classic Yukkuri)
 - CLI: `/engine voicevox`, `/speaker N`, `/speakers`
 
@@ -71,7 +71,7 @@ Discord Voice Chat (select as Input Device)
   - **Kanji + kana** → katakana via ``pyopenjtalk`` (``今日は`` → ``キョーワ``)
   - **Kana** → pass-through
 - Requires: ``pip install --break-system-packages e2k`` (English) and/or ``pyopenjtalk`` (kanji)
-- Library discovery: ``AQUESTALK_LIB`` env var → ``~/aquestalk/libAquesTalk10.so`` → ``/usr/local/lib/``
+- Library discovery: ``AQUESTALK_LIB`` env var → ``~/TTS/aquestalk/libAquesTalk10.so`` → ``/usr/local/lib/``
 - CLI: `/engine aquestalk`, `/voice f1|f2|f3|m1|m2|r1|r2`, `/voices`
 
 ## Audio Routing Details
@@ -97,7 +97,7 @@ Default location: `$XDG_CONFIG_HOME/yukkuri/config.json` (falls back to `~/.conf
     "voicevox": {
         "host": "127.0.0.1", "port": 50021, "speaker": 1,
         "timeout_seconds": 30,
-        "engine_path": "~/voicevox/voicevox_engine-linux-cpu-x64/run",
+        "engine_path": "~/TTS/voicevox/voicevox_engine-linux-cpu-x64/run",
         "auto_start": true
     },
     "edge": {"voice": "en-US-BrianNeural"},
@@ -169,5 +169,5 @@ python3 yukkuri_gui.py
 python3 yukkuri.py "こんにちは"
 
 # Or manually start VOICEVOX for Japanese voices:
-# ~/voicevox/voicevox_engine-linux-cpu-x64/run
+# ~/TTS/voicevox/voicevox_engine-linux-cpu-x64/run
 ```

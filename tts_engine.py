@@ -89,7 +89,7 @@ class VoicevoxEngine:
             ):
                 raise EngineNotRunning(
                     f"VOICEVOX engine is not running at {self.base_url}. "
-                    f"Start it with: ~/voicevox/voicevox_engine-linux-cpu-x64/run"
+                    f"Start it with: ~/TTS/voicevox/voicevox_engine-linux-cpu-x64/run"
                 )
             raise VoicevoxError(f"Cannot reach VOICEVOX: {e}")
         except http.client.HTTPException as e:

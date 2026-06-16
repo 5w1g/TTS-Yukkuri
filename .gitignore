@@ -21,5 +21,6 @@ Thumbs.db
 # Config with local paths
 ~/.config/yukkuri/config.json
 
-# Voice engine (downloaded separately)
-voicevox_engine/
+# Engine binaries (downloaded separately — bundled in repo dir for portability)
+voicevox/
+aquestalk/

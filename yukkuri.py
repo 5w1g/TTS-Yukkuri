@@ -579,7 +579,7 @@ def main():
         print("Error: No TTS engine available.", file=sys.stderr)
         print(
             "Install edge-tts, boto3, or place libAquesTalk10.so in"
-            " ~/aquestalk/",
+            " ~/TTS/aquestalk/",
             file=sys.stderr,
         )
         sys.exit(1)

@@ -103,7 +103,7 @@ step_voicevox() {
     # Verify the engine directory now exists
     if [[ ! -d "$engine_dir" ]]; then
         warn "Expected engine directory not found after extraction at ${engine_dir}"
-        warn "Please check the extracted contents of ~/voicevox/ manually."
+        warn "Please check the extracted contents of ~/TTS/voicevox/ manually."
     else
         ok "VOICEVOX engine ready at ${engine_dir}"
     fi
@@ -146,7 +146,7 @@ step_aquestalk() {
     echo "    1. Download the free evaluation SDK from:"
     echo "       https://www.a-quest.com/products/aquestalk10.html"
     echo "    2. Extract the archive and copy libAquesTalk10.so to:"
-    echo "       ~/aquestalk/libAquesTalk10.so  (or /usr/local/lib/)"
+    echo "       ~/TTS/aquestalk/libAquesTalk10.so  (or /usr/local/lib/)"
     echo "    3. Re-run this script, or set AQUESTALK_LIB env var."
     echo ""
     echo "  Note: The evaluation version has a minor limitation"
@@ -252,7 +252,7 @@ print_summary() {
     echo -e "${GREEN}${BOLD}╚══════════════════════════════════════════════════════════╝${NC}"
     echo ""
     echo -e "  ${BOLD}Start the VOICEVOX engine:${NC}"
-    echo -e "    cd ~/voicevox/voicevox_engine-linux-cpu-x64/"
+    echo -e "    cd ~/TTS/voicevox/voicevox_engine-linux-cpu-x64/"
     echo -e "    ./run"
     echo ""
     echo -e "  ${BOLD}Or use a cloud engine (no local server needed):${NC}"
