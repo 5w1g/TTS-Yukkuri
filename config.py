@@ -12,6 +12,12 @@ DEFAULT_CONFIG = {
         "speaker": 1,
         "timeout_seconds": 30,
     },
+    "edge": {
+        "voice": "en-US-BrianNeural",
+    },
+    "polly": {
+        "voice": "Brian",
+    },
     "aquestalk": {
         "lib_path": "",
         "voice": "f1",

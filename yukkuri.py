@@ -520,103 +520,69 @@ def main():
     polly_engine = None
     aq_engine = None
 
-    if engine_type == "voicevox":
-        engine = VoicevoxEngine(
+    # Build a prioritised list of available engines.
+    # Each factory returns (voicevox_engine, edge_engine, polly_engine,
+    # aques_engine, voice_id) — only one engine is non-None per factory.
+    candidates: list[tuple[str, callable]] = []
+    if HAS_AQUESTALK:
+        def _make_aquestalk():
+            return (None, None, None, AquesTalkEngine(), "f1")
+        candidates.append(("aquestalk", _make_aquestalk))
+    if HAS_EDGE:
+        def _make_edge():
+            return (None, EdgeTTSEngine(), None, None, "en-US-BrianNeural")
+        candidates.append(("edge", _make_edge))
+    if HAS_POLLY:
+        def _make_polly():
+            return (None, None, PollyEngine(), None, "Brian")
+        candidates.append(("polly", _make_polly))
+    # VOICEVOX always last (needs local server running)
+    def _make_voicevox():
+        eng = VoicevoxEngine(
             host=vv_cfg["host"], port=vv_cfg["port"],
             timeout=vv_cfg.get("timeout_seconds", 30),
         )
-        if not engine.is_running():
-            print(
-                f"Error: Cannot reach VOICEVOX engine at "
-                f"http://{vv_cfg['host']}:{vv_cfg['port']}",
-                file=sys.stderr,
-            )
-            print("Make sure VOICEVOX is running.  E.g.:", file=sys.stderr)
-            print("  ~/voicevox/voicevox_engine-linux-cpu-x64/run",
-                  file=sys.stderr)
-            sys.exit(1)
-    elif engine_type == "edge" and HAS_EDGE:
-        edge_engine = EdgeTTSEngine()
-        speaker_id = "en-US-BrianNeural"
-    elif engine_type == "polly" and HAS_POLLY:
-        polly_engine = PollyEngine()
-        speaker_id = "Brian"
-    elif engine_type == "aquestalk" and HAS_AQUESTALK:
-        aq_engine = AquesTalkEngine()
-        speaker_id = "f1"
+        return (eng, None, None, None, "")
+    candidates.append(("voicevox", _make_voicevox))
+
+    # Move the configured engine to the front
+    for i, (name, _) in enumerate(candidates):
+        if name == engine_type:
+            candidates.insert(0, candidates.pop(i))
+            break
+
+    # Try each candidate in order until one works
+    engine = edge_engine = polly_engine = aq_engine = None
+    speaker_id = ""
+    for engine_name, factory in candidates:
+        try:
+            if engine_name == "voicevox":
+                eng, _, _, _, _ = factory()
+                if eng.is_running():
+                    engine, engine_type = eng, "voicevox"
+                    break
+                print("VOICEVOX not running — trying next engine...",
+                      file=sys.stderr)
+            else:
+                eng, edge, polly, aq, voice = factory()
+                engine = eng or engine
+                edge_engine = edge or edge_engine
+                polly_engine = polly or polly_engine
+                aq_engine = aq or aq_engine
+                speaker_id = voice
+                engine_type = engine_name
+                break
+        except Exception as exc:
+            print(f"{engine_name} unavailable: {exc}", file=sys.stderr)
+            continue
     else:
-        # Default — try VOICEVOX first, then Polly, then Edge
-        engine = VoicevoxEngine(
-            host=vv_cfg["host"], port=vv_cfg["port"],
-            timeout=vv_cfg.get("timeout_seconds", 30),
+        print("Error: No TTS engine available.", file=sys.stderr)
+        print(
+            "Install edge-tts, boto3, or place libAquesTalk10.so in"
+            " ~/aquestalk/",
+            file=sys.stderr,
         )
-        if engine.is_running():
-            engine_type = "voicevox"
-        elif HAS_POLLY:
-            try:
-                polly_engine = PollyEngine()
-                engine_type = "polly"
-                speaker_id = "Brian"
-            except Exception:
-                if HAS_AQUESTALK:
-                    try:
-                        aq_engine = AquesTalkEngine()
-                        engine_type = "aquestalk"
-                        speaker_id = "f1"
-                    except Exception:
-                        if HAS_EDGE:
-                            try:
-                                edge_engine = EdgeTTSEngine()
-                                engine_type = "edge"
-                                speaker_id = "en-US-BrianNeural"
-                            except Exception as exc:
-                                print(f"Error: No TTS engine available: {exc}",
-                                      file=sys.stderr)
-                                sys.exit(1)
-                        else:
-                            print("Error: No TTS engine available.", file=sys.stderr)
-                            sys.exit(1)
-                elif HAS_EDGE:
-                    try:
-                        edge_engine = EdgeTTSEngine()
-                        engine_type = "edge"
-                        speaker_id = "en-US-BrianNeural"
-                    except Exception as exc:
-                        print(f"Error: No TTS engine available: {exc}",
-                              file=sys.stderr)
-                        sys.exit(1)
-                else:
-                    print("Error: No TTS engine available.", file=sys.stderr)
-                    sys.exit(1)
-        elif HAS_AQUESTALK:
-            try:
-                aq_engine = AquesTalkEngine()
-                engine_type = "aquestalk"
-                speaker_id = "f1"
-            except Exception as exc:
-                if HAS_EDGE:
-                    try:
-                        edge_engine = EdgeTTSEngine()
-                        engine_type = "edge"
-                        speaker_id = "en-US-BrianNeural"
-                    except Exception as exc2:
-                        print(f"Error: No TTS engine available: {exc}, {exc2}",
-                              file=sys.stderr)
-                        sys.exit(1)
-                else:
-                    print(f"Error: No TTS engine available: {exc}", file=sys.stderr)
-                    sys.exit(1)
-        elif HAS_EDGE:
-            try:
-                edge_engine = EdgeTTSEngine()
-                engine_type = "edge"
-                speaker_id = "en-US-BrianNeural"
-            except Exception as exc:
-                print(f"Error: No TTS engine available: {exc}", file=sys.stderr)
-                sys.exit(1)
-        else:
-            print("Error: No TTS engine available.", file=sys.stderr)
-            sys.exit(1)
+        sys.exit(1)
 
     def _active_engine():
         """Return the active engine instance for the current type."""

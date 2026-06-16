@@ -156,8 +156,8 @@ class YukkuriApp:
         # Remember voice selection per engine type
         self._voice_memory = {
             "voicevox": str(vv["speaker"]),
-            "edge": app_cfg.get("voice", DEFAULT_VOICE),
-            "polly": app_cfg.get("voice", "Brian"),
+            "edge": self.cfg.get("edge", {}).get("voice", DEFAULT_VOICE),
+            "polly": self.cfg.get("polly", {}).get("voice", "Brian"),
             "aquestalk": self.cfg.get("aquestalk", {}).get("voice", "f1"),
         }
 
@@ -883,9 +883,10 @@ class YukkuriApp:
         def _on_close():
             if self.engine_type == "voicevox" and self.speaker_id.get().isdigit():
                 self.cfg["voicevox"]["speaker"] = int(self.speaker_id.get())
-            # Save voice selection for polly/edge too
-            if self.engine_type != "voicevox":
-                self.cfg["app"]["voice"] = self.speaker_id.get()
+            # Save voice selection per engine — each engine gets its own key
+            voice = self.speaker_id.get()
+            if self.engine_type in ("edge", "polly", "aquestalk"):
+                self.cfg.setdefault(self.engine_type, {})["voice"] = voice
             self.cfg["app"]["speed_scale"] = self.speed.get()
             self.cfg["app"]["pitch_scale"] = self.pitch.get()
             self.cfg["app"]["intonation_scale"] = self.intonation.get()
