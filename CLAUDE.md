@@ -65,7 +65,12 @@ Discord Voice Chat (select as Input Device)
 - 7 voice presets: F1 (classic Yukkuri/Reimu), F2 (Marisa-type), F3 (soft/high), M1/M2 (male), R1/R2 (robot)
 - Outputs WAV PCM (16 kHz, 16-bit, mono) — directly playable by ``pw-play``
 - Speed (0.5–2.0 → spd 50–300), pitch (0.5–2.0 → pit 20–200), intonation (0.0–2.0 → acc 0–200)
-- Requires kana input (hiragana/katakana). Install ``pyopenjtalk`` for automatic kanji→kana conversion
+- **Multi-format input** — automatic conversion pipeline:
+  - **English** → katakana via ``e2k`` (``hello`` → ``ヘロー``)
+  - **Romaji** (Hepburn) → katakana via built-in regex (``konnichiwa`` → ``コンニチワ``)
+  - **Kanji + kana** → katakana via ``pyopenjtalk`` (``今日は`` → ``キョーワ``)
+  - **Kana** → pass-through
+- Requires: ``pip install --break-system-packages e2k`` (English) and/or ``pyopenjtalk`` (kanji)
 - Library discovery: ``AQUESTALK_LIB`` env var → ``~/aquestalk/libAquesTalk10.so`` → ``/usr/local/lib/``
 - CLI: `/engine aquestalk`, `/voice f1|f2|f3|m1|m2|r1|r2`, `/voices`
 
@@ -89,11 +94,27 @@ Default location: `$XDG_CONFIG_HOME/yukkuri/config.json` (falls back to `~/.conf
 
 ```json
 {
-    "voicevox": {"host": "127.0.0.1", "port": 50021, "speaker": 1, "timeout_seconds": 30},
+    "voicevox": {
+        "host": "127.0.0.1", "port": 50021, "speaker": 1,
+        "timeout_seconds": 30,
+        "engine_path": "~/voicevox/voicevox_engine-linux-cpu-x64/run",
+        "auto_start": true
+    },
+    "edge": {"voice": "en-US-BrianNeural"},
+    "polly": {"voice": "Brian"},
+    "aquestalk": {"voice": "f1", "lib_path": ""},
     "audio": {"sink_name": "yukkuri_sink", "sample_rate": 48000, "channels": 2},
-    "app": {"history_file": "~/.yukkuri_history", "speed_scale": 1.0, "pitch_scale": 1.0, "intonation_scale": 1.0, "engine": "voicevox", "voice": "Brian"}
+    "app": {
+        "history_file": "~/.yukkuri_history",
+        "speed_scale": 1.0, "pitch_scale": 1.0, "intonation_scale": 1.0,
+        "engine": "voicevox"
+    }
 }
 ```
+
+- Per-engine voice keys (``edge.voice``, ``polly.voice``, ``aquestalk.voice``) prevent cross-contamination
+- ``voicevox.auto_start`` (default ``true``) — GUI spawns the engine process on launch
+- ``voicevox.engine_path`` — path to VOICEVOX ``run`` binary
 
 Secrets (AWS keys) go in `~/.aws/credentials`, never in config.json or the repo.
 
@@ -106,14 +127,18 @@ Secrets (AWS keys) go in `~/.aws/credentials`, never in config.json or the repo.
 - 6 presets: Normal, Yukkuri, Fast, High Pitch, Whisper, Energetic
 - History listbox with double-click replay
 - Status dot (green/yellow/red) + engine footer
-- Voice memory per engine type (survives engine switches)
+- **Voice memory per engine type** — separate config keys prevent cross-contamination
+- **Auto-start VOICEVOX** — spawns engine process on launch (30s timeout), kills on exit
 - Background thread for synthesis keeps UI responsive
+- Default window: 1110×1104
 
 ## CLI (yukkuri.py)
 
 - REPL mode (default): interactive shell with `/commands`
 - One-shot: `yukkuri.py "hello world"`
 - Pipe: `echo "hello" | yukkuri.py`
+- **Engine fallback** — if the configured engine is unavailable, falls through to next available
+  engine (priority: configured → AquesTalk → Edge → Polly → VOICEVOX)
 - Commands: `/engine`, `/voice`, `/voices`, `/speaker`, `/speakers`, `/speed`, `/pitch`, `/intonation`, `/status`, `/help`, `/quit`
 
 ## Key Design Decisions
@@ -134,17 +159,15 @@ Secrets (AWS keys) go in `~/.aws/credentials`, never in config.json or the repo.
 ## Running
 
 ```bash
-# Start VOICEVOX engine (for Japanese voices)
-cd ~/voicevox/voicevox_engine-linux-cpu-x64/ && ./run
-
-# Or place libAquesTalk10.so in ~/aquestalk/ for authentic Yukkuri voice
-
-# CLI
+# CLI — engines auto-detected, falls back if configured one is down
 python3 yukkuri.py
 
-# GUI
+# GUI — auto-starts VOICEVOX if configured (set voicevox.auto_start: false to disable)
 python3 yukkuri_gui.py
 
 # One-shot
 python3 yukkuri.py "こんにちは"
+
+# Or manually start VOICEVOX for Japanese voices:
+# ~/voicevox/voicevox_engine-linux-cpu-x64/run
 ```
