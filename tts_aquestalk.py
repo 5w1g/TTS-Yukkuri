@@ -524,8 +524,10 @@ class AquesTalkEngine:
             )
 
             try:
-                # Check for error (negative wave_size or NULL pointer)
-                if wav_ptr is None or wave_size.value < 0:
+                # Check for error (negative wave_size or NULL pointer).
+                # ctypes wraps NULL C pointers in a non-None Python object
+                # where bool(wav_ptr) is False — "is None" never catches NULL.
+                if not wav_ptr or wave_size.value < 0:
                     err_code = wave_size.value if wave_size.value < 0 else -1
                     err_msg = _AQUESTALK_ERRORS.get(
                         err_code, f"Unknown error (code {err_code})"
@@ -583,7 +585,7 @@ class AquesTalkEngine:
 
             finally:
                 # Always free the C buffer — even if we failed to copy
-                if wav_ptr is not None:
+                if wav_ptr:
                     self._lib.AquesTalk_FreeWave(wav_ptr)
 
 
