@@ -740,13 +740,13 @@ class YukkuriApp:
                     "VOICEVOX not running. Start the engine first."
                 ))
             except SynthesisError as e:
-                self.root.after(0, lambda: self._on_speak_error(str(e)))
+                self.root.after(0, lambda e=e: self._on_speak_error(str(e)))
             except AudioRouterError as e:
-                self.root.after(0, lambda: self._on_speak_error(str(e)))
+                self.root.after(0, lambda e=e: self._on_speak_error(str(e)))
             except AquesTalkError as e:
-                self.root.after(0, lambda: self._on_speak_error(str(e)))
+                self.root.after(0, lambda e=e: self._on_speak_error(str(e)))
             except Exception as e:
-                self.root.after(0, lambda: self._on_speak_error(
+                self.root.after(0, lambda e=e: self._on_speak_error(
                     f"Error: {e}"
                 ))
 

@@ -62,11 +62,12 @@ Discord Voice Chat (select as Input Device)
 - **Authentic Yukkuri voice** (ゆっくり) — the classic Nico Nico Douga / YouTube voice
 - ctypes wrapper around ``libAquesTalk10.so`` (no pip dependency)
 - Free evaluation version with minor limitation (na/ma-row kana → "nu")
-- Outputs WAV PCM — directly playable by ``pw-play``
-- Speed control only (0.5–2.0 → 50–200); pitch/intonation not supported by basic API
-- Optional kanji→kana conversion via pyopenjtalk (if installed)
+- 7 voice presets: F1 (classic Yukkuri/Reimu), F2 (Marisa-type), F3 (soft/high), M1/M2 (male), R1/R2 (robot)
+- Outputs WAV PCM (16 kHz, 16-bit, mono) — directly playable by ``pw-play``
+- Speed (0.5–2.0 → spd 50–300), pitch (0.5–2.0 → pit 20–200), intonation (0.0–2.0 → acc 0–200)
+- Requires kana input (hiragana/katakana). Install ``pyopenjtalk`` for automatic kanji→kana conversion
 - Library discovery: ``AQUESTALK_LIB`` env var → ``~/aquestalk/libAquesTalk10.so`` → ``/usr/local/lib/``
-- CLI: `/engine aquestalk`, `/voice default`, `/voices`
+- CLI: `/engine aquestalk`, `/voice f1|f2|f3|m1|m2|r1|r2`, `/voices`
 
 ## Audio Routing Details
 
@@ -99,7 +100,7 @@ Secrets (AWS keys) go in `~/.aws/credentials`, never in config.json or the repo.
 ## GUI (yukkuri_gui.py)
 
 - Dark Catppuccin theme (bg=#1e1e2e, accent=#cba6f7)
-- Three engine toggle buttons: [VOICEVOX] [Edge TTS] [Polly]
+- Four engine toggle buttons: [VOICEVOX] [Edge TTS] [Polly] [AquesTalk10]
 - Voice dropdown repopulates per engine (async for cloud engines)
 - Speed/Pitch/Intonation sliders (0.5-2.0, Polly maps intonation → volume)
 - 6 presets: Normal, Yukkuri, Fast, High Pitch, Whisper, Energetic
