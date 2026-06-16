@@ -11,6 +11,8 @@ DEFAULT_CONFIG = {
         "port": 50021,
         "speaker": 1,
         "timeout_seconds": 30,
+        "engine_path": "~/voicevox/voicevox_engine-linux-cpu-x64/run",
+        "auto_start": True,
     },
     "edge": {
         "voice": "en-US-BrianNeural",

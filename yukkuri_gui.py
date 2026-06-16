@@ -9,8 +9,10 @@ Requires: python3-tk (sudo apt install python3-tk)
 """
 
 import os
+import subprocess
 import sys
 import threading
+import time
 import tkinter as tk
 from tkinter import ttk, messagebox
 
@@ -121,6 +123,9 @@ class YukkuriApp:
                 pass
 
         self.router = AudioRouter(sink_name=audio["sink_name"])
+
+        # Auto-start subprocess handle (if we launched VOICEVOX)
+        self._voicevox_process = None
 
         # Engine mode: "voicevox", "edge", or "polly"
         self.engine_type = app_cfg.get("engine", "voicevox")
@@ -789,6 +794,37 @@ class YukkuriApp:
 
     # ── Startup & Refresh ─────────────────────────────────────────────────
 
+    def _start_voicevox(self, engine_path):
+        """Launch the VOICEVOX engine process and wait for it to be ready."""
+        if not os.path.isfile(engine_path):
+            self.engine_footer.config(text="○ Engine binary not found")
+            return
+
+        try:
+            self._voicevox_process = subprocess.Popen(
+                [engine_path],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                cwd=os.path.dirname(engine_path),
+            )
+        except OSError as exc:
+            self.engine_footer.config(text=f"○ Failed to start: {exc}")
+            return
+
+        # Poll until the engine is ready or timeout
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            if self.engine.is_running():
+                return
+            time.sleep(0.5)
+
+        # Timed out — kill the process
+        try:
+            self._voicevox_process.kill()
+        except Exception:
+            pass
+        self._voicevox_process = None
+
     def _startup_check(self):
         """Check engine and sink status on startup."""
         engine_ok = False
@@ -825,12 +861,45 @@ class YukkuriApp:
                     self.root.title("Yukkuri TTS — VOICEVOX")
                 self.engine_footer.config(text="● Connected")
             else:
-                self.root.title("Yukkuri TTS — VOICEVOX (offline)")
-                self.status_label.config(
-                    text="VOICEVOX not running — start the engine first", fg=RED,
-                )
-                self._draw_dot(RED)
-                self.engine_footer.config(text="○ Not connected")
+                # Auto-start VOICEVOX if configured
+                vv_cfg = self.cfg.get("voicevox", {})
+                if vv_cfg.get("auto_start", True):
+                    engine_path = os.path.expanduser(
+                        vv_cfg.get("engine_path",
+                                   "~/voicevox/voicevox_engine-linux-cpu-x64/run")
+                    )
+                    self.status_label.config(
+                        text="Starting VOICEVOX engine...", fg=YELLOW,
+                    )
+                    self._draw_dot(YELLOW)
+                    self.engine_footer.config(text="◉ Starting...")
+                    self.root.update_idletasks()
+                    self._start_voicevox(engine_path)
+                    # Re-check
+                    if self.engine.is_running():
+                        engine_ok = True
+                        try:
+                            version = self.engine.get_version()
+                            self.root.title(f"Yukkuri TTS — VOICEVOX {version}")
+                        except Exception:
+                            self.root.title("Yukkuri TTS — VOICEVOX")
+                        self.engine_footer.config(text="● Connected (auto-started)")
+                    else:
+                        self.root.title("Yukkuri TTS — VOICEVOX (offline)")
+                        self.status_label.config(
+                            text="VOICEVOX started but not responding"
+                            " — check the engine", fg=RED,
+                        )
+                        self._draw_dot(RED)
+                        self.engine_footer.config(text="○ Auto-start failed")
+                else:
+                    self.root.title("Yukkuri TTS — VOICEVOX (offline)")
+                    self.status_label.config(
+                        text="VOICEVOX not running — start the engine first",
+                        fg=RED,
+                    )
+                    self._draw_dot(RED)
+                    self.engine_footer.config(text="○ Not connected")
 
         try:
             sink_ok = self.router.ensure_sink_exists()
@@ -893,6 +962,16 @@ class YukkuriApp:
             self.cfg["app"]["engine"] = self.engine_type
             save_config(self.cfg)
             self.router.cleanup()
+            # Kill auto-started VOICEVOX process
+            if self._voicevox_process is not None:
+                try:
+                    self._voicevox_process.terminate()
+                    self._voicevox_process.wait(timeout=3)
+                except Exception:
+                    try:
+                        self._voicevox_process.kill()
+                    except Exception:
+                        pass
             self.root.destroy()
 
         self.root.protocol("WM_DELETE_WINDOW", _on_close)
