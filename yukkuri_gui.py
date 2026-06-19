@@ -282,6 +282,15 @@ class YukkuriApp:
         )
         self.text_entry.pack(side="left", fill="x", expand=True, ipady=6, padx=(8, 4))
         self.text_entry.bind("<Return>", lambda e: self._do_speak())
+        # Clipboard bindings (tkinter doesn't bind these on Linux by default)
+        self.text_entry.bind("<Control-a>", lambda e: self._select_all(e))
+        self.text_entry.bind("<Control-A>", lambda e: self._select_all(e))
+        self.text_entry.bind("<Control-c>", lambda e: self._clipboard_copy(e))
+        self.text_entry.bind("<Control-C>", lambda e: self._clipboard_copy(e))
+        self.text_entry.bind("<Control-v>", lambda e: self._clipboard_paste(e))
+        self.text_entry.bind("<Control-V>", lambda e: self._clipboard_paste(e))
+        self.text_entry.bind("<Control-x>", lambda e: self._clipboard_cut(e))
+        self.text_entry.bind("<Control-X>", lambda e: self._clipboard_cut(e))
         self.text_entry.focus_set()
 
         self.speak_btn = tk.Button(
@@ -953,6 +962,51 @@ class YukkuriApp:
             pass
 
     # ── Helpers ───────────────────────────────────────────────────────────
+
+    def _select_all(self, event):
+        """Ctrl+A — select all text in the entry."""
+        self.text_entry.select_range(0, "end")
+        self.text_entry.icursor("end")
+        return "break"
+
+    def _clipboard_copy(self, event):
+        """Ctrl+C — copy selection to clipboard."""
+        try:
+            sel = self.text_entry.selection_get()
+            self.root.clipboard_clear()
+            self.root.clipboard_append(sel)
+        except tk.TclError:
+            pass  # no selection
+        return "break"
+
+    def _clipboard_paste(self, event):
+        """Ctrl+V — paste from clipboard."""
+        try:
+            clip = self.root.clipboard_get()
+            if self.text_entry.select_present():
+                # Replace selection
+                start = self.text_entry.index("sel.first")
+                end = self.text_entry.index("sel.last")
+                self.text_entry.delete(start, end)
+                self.text_entry.insert(start, clip)
+            else:
+                self.text_entry.insert("insert", clip)
+        except tk.TclError:
+            pass  # clipboard empty or not text
+        return "break"
+
+    def _clipboard_cut(self, event):
+        """Ctrl+X — cut selection to clipboard."""
+        try:
+            sel = self.text_entry.selection_get()
+            self.root.clipboard_clear()
+            self.root.clipboard_append(sel)
+            start = self.text_entry.index("sel.first")
+            end = self.text_entry.index("sel.last")
+            self.text_entry.delete(start, end)
+        except tk.TclError:
+            pass  # no selection
+        return "break"
 
     def _draw_dot(self, color):
         self.status_dot.delete("all")
